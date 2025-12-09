@@ -11,12 +11,21 @@ interface ControlPanelProps {
 export default function ControlPanel({
     onUpload,
 }: ControlPanelProps) {
-    const { layers, activeLayerId, setActiveLayer, tshirtColor, setTshirtColor } = useStore();
+    const layers = useStore((s) => s.layers);
+    const activeLayerId = useStore((s) => s.activeLayerId);
+    const setActiveLayer = useStore((s) => s.setActiveLayer);
+    const tshirtColor = useStore((s) => s.tshirtColor);
+    const setTshirtColor = useStore((s) => s.setTshirtColor);
+    const removeLayer = useStore((s) => s.removeLayer);
+    const updateLayerTransform = useStore((s) => s.updateLayerTransform);
+
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     const handleUploadClick = () => {
         fileInputRef.current?.click();
     };
+
+    const activeLayer = layers.find((l) => l.id === activeLayerId);
 
     return (
         <div className="w-80 h-full bg-white border-l border-slate-200 flex flex-col shadow-xl z-20">
@@ -77,23 +86,57 @@ export default function ControlPanel({
                     {layers.map((layer, index) => (
                         <div
                             key={layer.id}
-                            onClick={() => setActiveLayer(layer.id)}
-                            className={`flex items-center p-2 rounded-lg cursor-pointer border ${activeLayerId === layer.id ? 'bg-blue-50 border-blue-200 ring-1 ring-blue-100' : 'bg-white border-slate-100 hover:border-slate-300'}`}
+                            className={`w-full flex items-center p-2 rounded-lg border bg-white ${activeLayerId === layer.id ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-100 hover:border-slate-300'
+                                }`}
                         >
-                            <div className="w-10 h-10 bg-slate-100 rounded overflow-hidden flex-shrink-0 border border-slate-200">
-                                {layer.type === 'image' && (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={layer.url} className="w-full h-full object-cover" alt={`Layer ${index + 1}`} />
-                                )}
-                            </div>
-                            <div className="ml-3 overflow-hidden">
-                                <p className="text-sm font-medium text-slate-700 truncate">Katman {index + 1}</p>
-                                <p className="text-xs text-slate-400 capitalize">{layer.type}</p>
-                            </div>
+                            <button
+                                className="flex-1 flex items-center text-left"
+                                onClick={() => setActiveLayer(layer.id)}
+                            >
+                                <div className="w-10 h-10 bg-slate-100 rounded overflow-hidden flex-shrink-0 border border-slate-200">
+                                    {layer.type === 'image' && (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={layer.src} className="w-full h-full object-cover" alt={`Layer ${index + 1}`} />
+                                    )}
+                                </div>
+                                <div className="ml-3 overflow-hidden">
+                                    <p className="text-sm font-medium text-slate-700 truncate">Katman {index + 1}</p>
+                                    <p className="text-xs text-slate-400 capitalize">{layer.type}</p>
+                                </div>
+                            </button>
+                            <button
+                                onClick={() => removeLayer(layer.id)}
+                                className="ml-2 w-6 h-6 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            >
+                                ✕
+                            </button>
                         </div>
                     ))}
                 </div>
             </div>
+
+            {/* Scale Control for Active Layer */}
+            {activeLayer && (
+                <div className="border-t border-slate-100 p-4 space-y-2 bg-slate-50">
+                    <div className="flex justify-between items-center">
+                        <p className="text-xs font-semibold text-slate-500">Boyut (Scale)</p>
+                        <span className="text-xs text-slate-400">{Math.round(activeLayer.scale * 100)}%</span>
+                    </div>
+                    <input
+                        type="range"
+                        min={0.05}
+                        max={0.5}
+                        step={0.01}
+                        value={activeLayer.scale}
+                        onChange={(e) =>
+                            updateLayerTransform(activeLayer.id, {
+                                scale: parseFloat(e.target.value),
+                            })
+                        }
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    />
+                </div>
+            )}
 
             {/* Footer Actions */}
             <div className="p-4 border-t border-slate-100 bg-slate-50">
