@@ -1,96 +1,130 @@
 'use client';
-import React from 'react';
-import { useGLTF, Decal, useTexture } from '@react-three/drei';
+import React, { useRef, useState, useEffect, forwardRef } from 'react';
+import { useGLTF, Decal, useTexture, TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore, Layer } from '@/store/useStore';
 import { PRODUCTS } from '@/config/products';
 import { GLTF } from 'three-stdlib';
 
+// --- MINIMAL LAYER DECAL ---
 interface LayerDecalProps {
     layer: Layer;
     isActive: boolean;
-    setActiveLayer: (id: string | null) => void;
+    onSelect: () => void;
 }
 
-const LayerDecal = ({ layer, isActive, setActiveLayer }: LayerDecalProps) => {
-    const texture = useTexture(layer.url) as THREE.Texture;
+const LayerDecal = forwardRef<THREE.Mesh, LayerDecalProps>(({ layer, isActive, onSelect }, ref) => {
+    const texture = useTexture(layer.url);
+
+    // Basic SRGB Fix
+    React.useLayoutEffect(() => {
+        if (texture) {
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.needsUpdate = true;
+        }
+    }, [texture]);
+
     return (
         <Decal
-            position={layer.position}
-            rotation={layer.rotation}
-            scale={[layer.scale, layer.scale, 1]}
+            ref={ref}
+            position={new THREE.Vector3(...layer.position)}
+            rotation={new THREE.Euler(...layer.rotation)}
+            scale={[layer.scale, layer.scale, 0.5]}
             onPointerDown={(e) => {
                 e.stopPropagation();
-                setActiveLayer(layer.id);
+                onSelect();
             }}
         >
             <meshBasicMaterial
                 map={texture}
                 transparent
                 polygonOffset
-                polygonOffsetFactor={isActive ? -2 : -1}
+                polygonOffsetFactor={isActive ? -10 : -1}
                 depthTest
                 depthWrite={false}
+                toneMapped={false}
             />
         </Decal>
     );
-};
+});
+LayerDecal.displayName = 'LayerDecal';
 
+// --- SCENE TYPE ---
 type GLTFResult = GLTF & {
     nodes: Record<string, THREE.Mesh>;
     materials: Record<string, THREE.Material>;
 };
 
 export default function ActiveProduct() {
-    const { tshirtColor, layers, activeLayerId, setActiveLayer } = useStore();
+    const { tshirtColor, layers, activeLayerId, setActiveLayer, updateLayer } = useStore();
     const { nodes } = useGLTF(PRODUCTS.tshirt.modelPath) as unknown as GLTFResult;
 
-    // Use a Base64 data URI for a simple noise/fabric normal map to ensure it always loads.
-    const fabricNormalMapUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAIklEQVQIW2NkQAKrVq36zwjjgzhhZWGMYAEYB8RmROaABADeOQ8CXl/xfgAAAABJRU5ErkJggg==';
-    const fabricTexture = useTexture(fabricNormalMapUrl);
+    // REF MAP for Gizmo
+    const decalsMap = useRef<Map<string, THREE.Mesh>>(new Map());
+    const [, forceUpdate] = React.useReducer(x => x + 1, 0);
 
-    React.useLayoutEffect(() => {
-        if (fabricTexture) {
-            fabricTexture.wrapS = fabricTexture.wrapT = THREE.RepeatWrapping;
-            fabricTexture.repeat.set(20, 20); // Higher repeat for the small pattern
-            fabricTexture.needsUpdate = true;
-        }
-    }, [fabricTexture]);
+    // Sync Gizmo
+    useEffect(() => { forceUpdate(); }, [activeLayerId]);
+
+    const activeMesh = activeLayerId ? decalsMap.current.get(activeLayerId) || null : null;
+
+    // Identify Body Mesh
+    const bodyMesh = Object.values(nodes).find(n => n.name.includes('Body') || n.geometry?.attributes?.position?.count > 1000);
 
     return (
         <group dispose={null} scale={PRODUCTS.tshirt.scale} position={PRODUCTS.tshirt.position}>
+            {/* 1. GIZMO */}
+            {activeLayerId && activeMesh && (
+                <TransformControls
+                    object={activeMesh}
+                    mode="translate"
+                    size={0.8}
+                    onMouseUp={() => {
+                        updateLayer(activeLayerId, {
+                            position: [activeMesh.position.x, activeMesh.position.y, activeMesh.position.z],
+                            rotation: [activeMesh.rotation.x, activeMesh.rotation.y, activeMesh.rotation.z],
+                            scale: activeMesh.scale.x
+                        });
+                    }}
+                />
+            )}
+
+            {/* 2. BODY & DECALS */}
             {Object.values(nodes).map((node) => {
                 if (!node.isMesh) return null;
+                const isBody = (node === bodyMesh);
 
                 return (
                     <mesh
                         key={node.uuid}
                         geometry={node.geometry}
-                        material={node.material}
                         castShadow
                         receiveShadow
+                        // If body, use StandardMaterial with User Color
+                        material={isBody ?
+                            new THREE.MeshStandardMaterial({
+                                color: tshirtColor,
+                                roughness: 1,
+                                metalness: 0
+                            })
+                            : node.material}
+                        // Ensure color update
+                        material-color={isBody ? tshirtColor : undefined}
+                        onPointerDown={(e) => {
+                            e.stopPropagation();
+                            setActiveLayer(null);
+                        }}
                     >
-                        {/* 1. Base Material Override with Fabric Effect */}
-                        {/* 1. Base Material Override with Fabric Effect */}
-                        <meshPhysicalMaterial
-                            color={tshirtColor}
-                            roughness={0.7}
-                            metalness={0.0}
-                            reflectivity={0.0}
-                            sheen={1.0}
-                            sheenRoughness={0.5}
-                            sheenColor={new THREE.Color(tshirtColor).lerp(new THREE.Color(0xffffff), 0.2)}
-                            normalMap={fabricTexture}
-                            normalScale={new THREE.Vector2(0.5, 0.5)}
-                        />
-
-                        {/* 2. Decals MUST be inside this mesh */}
-                        {layers.map((layer) => (
+                        {isBody && layers.map((layer) => (
                             <LayerDecal
                                 key={layer.id}
                                 layer={layer}
                                 isActive={layer.id === activeLayerId}
-                                setActiveLayer={setActiveLayer}
+                                onSelect={() => setActiveLayer(layer.id)}
+                                ref={(mesh) => {
+                                    if (mesh) decalsMap.current.set(layer.id, mesh);
+                                    else decalsMap.current.delete(layer.id);
+                                }}
                             />
                         ))}
                     </mesh>

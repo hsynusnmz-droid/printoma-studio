@@ -13,7 +13,6 @@ export default function StudioCanvas() {
                     <ActiveProduct />
                 </Center>
                 <Environment preset="studio" blur={1} />
-                <ContactShadows resolution={1024} scale={10} blur={1} opacity={0.5} far={10} color="#333" />
                 <OrbitControls makeDefault minDistance={1} maxDistance={4} enablePan={false} />
             </Canvas>
         </div>
