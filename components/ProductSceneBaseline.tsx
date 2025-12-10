@@ -44,6 +44,8 @@ function BaselineModel({
     const startDraggingLayer = useStore((s) => s.startDraggingLayer);
     const stopDraggingLayer = useStore((s) => s.stopDraggingLayer);
     const updateLayerTransform = useStore((s) => s.updateLayerTransform);
+    const animationType = useStore((s) => s.animationType);
+    const animationSpeed = useStore((s) => s.animationSpeed);
 
     const gltf = useGLTF(modelPath);
     const scene = useMemo(() => gltf.scene.clone(), [gltf.scene]);
@@ -56,12 +58,13 @@ function BaselineModel({
     // ✅ FIX: Direct Mutation Refs (Sıfır Gecikme Icin)
     const layerRefs = useRef<{ [id: string]: THREE.Mesh }>({});
     const dragCommitRef = useRef<{ id: string; position: [number, number, number]; normal?: [number, number, number] } | null>(null);
+    const animationGroupRef = useRef<THREE.Group>(null);
 
     const [isCameraInside, setIsCameraInside] = React.useState(false);
 
     const pointer = useRef(new THREE.Vector2());
     const raycaster = useRef(new THREE.Raycaster());
-    const { camera, gl } = useThree();
+    const { camera } = useThree();
 
     // 1) Materyalleri klonla ve whitelist'e al
     useLayoutEffect(() => {
@@ -188,13 +191,12 @@ function BaselineModel({
     }, [layers.length, camera, updateLayerTransform]);
 
     // 5) Pointer move
+    // 5) Pointer move
     const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
         if (!draggingLayerId) return;
 
-        pointer.current.set(
-            (e.clientX / gl.domElement.clientWidth) * 2 - 1,
-            -(e.clientY / gl.domElement.clientHeight) * 2 + 1
-        );
+        // ✅ FIX: Use R3F normalized pointer directly (handles canvas offset correctly)
+        pointer.current.copy(e.pointer);
     };
 
     // 6) Drag başlangıcı (kilitli layer kontrol ekle)
@@ -205,10 +207,9 @@ function BaselineModel({
         const targetMesh = targetMeshRef.current;
         if (!targetMesh || layers.length === 0) return;
 
-        pointer.current.set(
-            (e.clientX / gl.domElement.clientWidth) * 2 - 1,
-            -(e.clientY / gl.domElement.clientHeight) * 2 + 1
-        );
+        // ✅ FIX: Use R3F normalized pointer
+        pointer.current.copy(e.pointer);
+
         raycaster.current.setFromCamera(pointer.current, camera);
         const hits = raycaster.current.intersectObject(targetMesh, true);
         if (!hits.length) return;
@@ -252,7 +253,32 @@ function BaselineModel({
     };
 
     // 8) ✅ PERFORMANS: useFrame optimizasyonu (Direct Mutation)
-    useFrame(() => {
+    useFrame((state) => {
+        // --- Animation Logic ---
+        const group = animationGroupRef.current;
+        if (group) {
+            const time = state.clock.elapsedTime * animationSpeed;
+
+            if (animationType === 'walk') {
+                group.rotation.y = Math.sin(time) * 0.4;
+                group.position.y = Math.abs(Math.sin(time * 4)) * 0.05;
+            } else if (animationType === 'waves') {
+                group.rotation.z = Math.sin(time * 0.5) * 0.05;
+                group.rotation.x = Math.cos(time * 0.3) * 0.05;
+                group.position.y = Math.sin(time) * 0.05;
+            } else if (animationType === 'knit') {
+                const s = 1 + Math.sin(time * 2) * 0.02;
+                group.scale.setScalar(s);
+                group.rotation.set(0, 0, 0);
+                group.position.set(0, 0, 0);
+            } else {
+                // Reset to default
+                group.position.set(0, 0, 0);
+                group.rotation.set(0, 0, 0);
+                group.scale.set(1, 1, 1);
+            }
+        }
+
         const targetMesh = targetMeshRef.current;
 
         // Kamera içinde mi kontrolü
@@ -284,12 +310,15 @@ function BaselineModel({
             // 2. Rotasyonu ve Scale'i güncelle (GPU) - Stable Helper & Mirror Fix
             if (normal) {
                 const n = new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
-                const { rotation: [rx, ry, rz], scaleX } = calculateDecalRotation(n);
+
+                // Layer'ı bul (Rotation Z, ScaleFlip ve Manuel Flip için)
+                const layer = layers.find(l => l.id === draggingLayerId);
+                const rotationZ = layer?.rotationZ || 0;
+
+                const { rotation: [rx, ry, rz], scaleX } = calculateDecalRotation(n, rotationZ);
 
                 activeMesh.rotation.set(rx, ry, rz);
 
-                // Mirror fix için scale güncellemesi
-                const layer = layers.find(l => l.id === draggingLayerId);
                 if (layer) {
                     const manualFlipX = layer.flipX ? -1 : 1;
                     const manualFlipY = layer.flipY ? -1 : 1;
@@ -317,16 +346,18 @@ function BaselineModel({
             onPointerDown={handlePointerDown}
             onPointerUp={handlePointerUp}
         >
-            <primitive object={scene} scale={scale} position={position} />
+            <group ref={animationGroupRef}>
+                <primitive object={scene} scale={scale} position={position} />
 
-            {/* ✅ Unified Interaction Mesh (Phantom) */}
-            {targetMesh && (
-                <primitive
-                    object={targetMesh}
-                    scale={scale}
-                    position={position}
-                />
-            )}
+                {/* ✅ Unified Interaction Mesh (Phantom) */}
+                {targetMesh && (
+                    <primitive
+                        object={targetMesh}
+                        scale={scale}
+                        position={position}
+                    />
+                )}
+            </group>
 
             {targetMesh &&
                 !isCameraInside &&
@@ -365,7 +396,7 @@ export default function ProductSceneBaseline({
     const draggingLayerId = useStore((s) => s.draggingLayerId);
 
     return (
-        <div className="w-full h-full relative bg-gradient-to-br from-slate-50 to-slate-100">
+        <div className="flex-1 min-w-0 h-full relative bg-gradient-to-br from-slate-50 to-slate-100">
             <Canvas
                 shadows
                 camera={{ fov: 35, position: [0, 1.3, 2.2] }}

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { Upload, Layers, Type, Download, Eye, EyeOff, Lock, Unlock, ArrowLeftRight, ArrowUpDown } from 'lucide-react';
+import { Upload, Layers, Type, Download, Eye, EyeOff, Lock, Unlock, ArrowLeftRight, ArrowUpDown, RotateCcw, Sparkles, Wand2 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 
 interface ControlPanelProps {
@@ -13,8 +13,7 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
     const layers = useStore((s) => s.layers);
     const activeLayerId = useStore((s) => s.activeLayerId);
     const setActiveLayer = useStore((s) => s.setActiveLayer);
-    const tshirtColor = useStore((s) => s.tshirtColor);
-    const setTshirtColor = useStore((s) => s.setTshirtColor);
+
     const removeLayer = useStore((s) => s.removeLayer);
     const updateLayerTransform = useStore((s) => s.updateLayerTransform);
     const toggleLayerVisibility = useStore((s) => s.toggleLayerVisibility);
@@ -29,93 +28,64 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
     const activeLayer = layers.find((l) => l.id === activeLayerId);
 
     return (
-        <div className="w-80 h-full bg-white border-l border-slate-200 flex flex-col shadow-xl z-20">
-            {/* Header */}
-            <div className="p-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
-                <h2 className="font-bold text-slate-800 text-lg">Tasarım Paneli</h2>
-                <p className="text-xs text-slate-500 mt-1">Özelleştirmeye başla</p>
+        <div className="flex flex-col h-full bg-white border-r border-slate-200 shadow-sm animate-in slide-in-from-left duration-500 rounded-2xl overflow-hidden mx-4 my-4 max-h-[calc(100vh-2rem)] w-96 shrink-0">
+            <div className="p-5 border-b border-slate-100 bg-slate-50">
+                <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-blue-600" />
+                    Katmanlar
+                </h2>
+                <p className="text-xs text-slate-400 mt-1">Sürükle bırak ile tasarla</p>
             </div>
 
-            {/* Tools Grid */}
-            <div className="p-4 grid grid-cols-2 gap-3">
+            {/* Main Content Area - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+
+                {/* AI Generator Section */}
+                <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl p-3 border border-purple-100 mb-2 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                        <span>AI Tasarım Oluşturucu</span>
+                    </div>
+                    <textarea
+                        placeholder="Örn: Uzayda sörf yapan astronot..."
+                        className="w-full h-16 bg-white border border-purple-100 rounded-lg p-2.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-300 resize-none transition-all shadow-sm"
+                    />
+                    <button className="w-full py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg text-xs font-bold hover:shadow-md hover:from-purple-700 hover:to-indigo-700 transition-all flex items-center justify-center gap-2 shadow-sm group">
+                        <Wand2 className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform" />
+                        Sihirli Tasarım Oluştur
+                    </button>
+                </div>
+
+                {/* Upload Button */}
                 <button
                     onClick={handleUploadClick}
-                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed border-slate-200 hover:border-blue-500 hover:bg-blue-50 transition-all group"
+                    className="w-full h-12 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center gap-2 text-slate-500 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all group"
                 >
-                    <Upload className="w-6 h-6 text-slate-400 group-hover:text-blue-500 mb-2 transition-colors" />
-                    <span className="text-sm font-medium text-slate-600 group-hover:text-blue-600 transition-colors">
-                        Görsel Yükle
-                    </span>
+                    <Upload className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-medium">Görsel Yükle</span>
                 </button>
                 <input
                     type="file"
                     ref={fileInputRef}
                     onChange={onUpload}
+                    accept="image/*"
                     className="hidden"
-                    accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
                 />
 
-                <button
-                    className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-slate-100 transition-all cursor-not-allowed opacity-50"
-                    disabled
-                >
-                    <Type className="w-6 h-6 text-slate-400 mb-2" />
-                    <span className="text-sm font-medium text-slate-600">Yazı Ekle</span>
-                    <span className="text-xs text-slate-400 mt-1">(Yakında)</span>
-                </button>
-            </div>
-
-            {/* Renk Seçimi */}
-            <div className="p-4 border-t border-slate-100">
-                <h3 className="text-sm font-semibold text-slate-700 mb-3">T-Shirt Rengi</h3>
-                <div className="flex gap-2 flex-wrap">
-                    {[
-                        { hex: '#FFFFFF', name: 'Beyaz' },
-                        { hex: '#000000', name: 'Siyah' },
-                        { hex: '#EF4444', name: 'Kırmızı' },
-                        { hex: '#3B82F6', name: 'Mavi' },
-                        { hex: '#22C55E', name: 'Yeşil' },
-                        { hex: '#F59E0B', name: 'Turuncu' },
-                    ].map((color) => (
-                        <button
-                            key={color.hex}
-                            onClick={() => setTshirtColor(color.hex)}
-                            title={color.name}
-                            className={`w-9 h-9 rounded-full border-2 transition-all ${tshirtColor === color.hex
-                                ? 'border-blue-500 ring-2 ring-blue-200 scale-110'
-                                : 'border-slate-200 hover:border-slate-300 hover:scale-105'
-                                }`}
-                            style={{ backgroundColor: color.hex }}
-                        />
-                    ))}
-                </div>
-            </div>
-
-            {/* Katmanlar (Layers) */}
-            <div className="flex-1 overflow-y-auto p-4 border-t border-slate-100">
-                <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center">
-                    <Layers className="w-4 h-4 mr-2" />
-                    Katmanlar ({layers.length})
-                </h3>
+                {/* Layer List */}
                 <div className="space-y-2">
-                    {layers.length === 0 && (
-                        <div className="text-center py-8">
-                            <p className="text-sm text-slate-400 mb-2">Henüz katman yok.</p>
-                            <p className="text-xs text-slate-300">Yukarıdan görsel yükleyin</p>
-                        </div>
-                    )}
                     {layers.map((layer, index) => (
                         <div
                             key={layer.id}
-                            className={`w-full flex items-center gap-2 p-2 rounded-lg border transition-all ${activeLayerId === layer.id
-                                ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-200'
-                                : 'border-slate-100 bg-white hover:border-slate-300 hover:shadow-sm'
+                            className={`group flex items-center p-2 rounded-xl transition-all border ${activeLayerId === layer.id
+                                ? 'bg-blue-50 border-blue-200 shadow-sm'
+                                : 'bg-white border-slate-200 hover:border-slate-300'
                                 }`}
                         >
-                            {/* Layer Preview & Info */}
+                            {/* Layer Select Action */}
                             <button
-                                className="flex-1 flex items-center text-left min-w-0"
                                 onClick={() => setActiveLayer(layer.id)}
+                                className="flex items-center flex-1 min-w-0"
                             >
                                 <div className="relative w-10 h-10 bg-slate-100 rounded overflow-hidden flex-shrink-0 border border-slate-200">
                                     {layer.type === 'image' && (
@@ -128,7 +98,7 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
                                         />
                                     )}
                                 </div>
-                                <div className="ml-3 overflow-hidden flex-1">
+                                <div className="ml-3 overflow-hidden flex-1 text-left">
                                     <p className="text-sm font-medium text-slate-700 truncate">
                                         Katman {index + 1}
                                     </p>
@@ -136,8 +106,8 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
                                 </div>
                             </button>
 
-                            {/* ✅ NEW: Quick Actions */}
-                            <div className="flex items-center gap-1">
+                            {/* Quick Actions */}
+                            <div className="flex items-center gap-1 pl-2">
                                 {/* Visibility Toggle */}
                                 <button
                                     onClick={() => toggleLayerVisibility(layer.id)}
@@ -181,7 +151,7 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
                 </div>
             </div>
 
-            {/* Scale Control for Active Layer */}
+            {/* Transform Controls for Active Layer */}
             {activeLayer && !activeLayer.locked && (
                 <div className="border-t border-slate-100 p-4 space-y-3 bg-slate-50">
                     <div className="flex justify-between items-center">
@@ -203,6 +173,7 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
                         }
                         className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
                     />
+
                     {/* Flip Controls */}
                     <div className="flex gap-2 pt-2 border-t border-slate-200 mt-2">
                         <button
@@ -227,7 +198,33 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
                         </button>
                     </div>
 
-                    <p className="text-xs text-slate-400 text-center">
+                    {/* Rotation Control */}
+                    <div className="pt-3 border-t border-slate-200 mt-2 space-y-2">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                <span>Döndür (Açı)</span>
+                            </div>
+                            <span className="text-xs text-slate-500 font-mono">
+                                {Math.round(((activeLayer.rotationZ || 0) * 180) / Math.PI)}°
+                            </span>
+                        </div>
+                        <input
+                            type="range"
+                            min={0}
+                            max={360}
+                            step={1}
+                            value={Math.round(((activeLayer.rotationZ || 0) * 180) / Math.PI)}
+                            onChange={(e) =>
+                                updateLayerTransform(activeLayer.id, {
+                                    rotationZ: (parseFloat(e.target.value) * Math.PI) / 180,
+                                })
+                            }
+                            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                    </div>
+
+                    <p className="text-xs text-slate-400 text-center mt-2">
                         Sürükle-bırak ile pozisyon ayarla
                     </p>
                 </div>

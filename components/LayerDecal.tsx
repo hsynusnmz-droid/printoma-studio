@@ -36,8 +36,8 @@ export function LayerDecal({ layer, onRef }: LayerDecalProps) {
         }
 
         const n = new THREE.Vector3(...layer.normal).normalize();
-        return calculateDecalRotation(n);
-    }, [layer.normal, layer.rotation]);
+        return calculateDecalRotation(n, layer.rotationZ || 0);
+    }, [layer.normal, layer.rotation, layer.rotationZ]);
 
     const materialRef = React.useRef<THREE.MeshStandardMaterial | null>(null);
 

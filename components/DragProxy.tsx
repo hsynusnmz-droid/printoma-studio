@@ -16,8 +16,8 @@ export function DragProxy({ layer, onRef }: DragProxyProps) {
     // Stable Rotation & Scale Logic
     const { rotation, scaleX } = useMemo(() => {
         if (!layer.normal) return { rotation: layer.rotation, scaleX: 1 };
-        return calculateDecalRotation(new THREE.Vector3(...layer.normal).normalize());
-    }, [layer.normal, layer.rotation]);
+        return calculateDecalRotation(new THREE.Vector3(...layer.normal).normalize(), layer.rotationZ || 0);
+    }, [layer.normal, layer.rotation, layer.rotationZ]);
 
     const configuredTexture = useMemo(() => {
         const t = baseTexture.clone();

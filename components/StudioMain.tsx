@@ -3,6 +3,7 @@
 import React from 'react';
 import ProductSceneBaseline from './ProductSceneBaseline';
 import ControlPanel from './ControlPanel';
+import LeftPanel from './LeftPanel';
 import { useStore } from '@/store/useStore';
 import { ProductConfig } from '@/types/supabase-custom';
 
@@ -52,6 +53,9 @@ export default function StudioMain({ product }: StudioMainProps) {
 
     return (
         <div className="flex items-stretch h-screen w-full bg-slate-50 overflow-hidden">
+            {/* Left Control Panel */}
+            <LeftPanel />
+
             {/* Main Canvas Area */}
             <ProductSceneBaseline
                 modelPath={modelPath}

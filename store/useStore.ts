@@ -14,6 +14,7 @@ export interface Layer {
     visible?: boolean; // 🆕 Görünürlük toggle
     flipX?: boolean; // 🆕 Yatay Aynalama
     flipY?: boolean; // 🆕 Dikey Aynalama
+    rotationZ?: number; // 🆕 2D Döndürme (Radyan)
 }
 
 interface AppState {
@@ -31,10 +32,16 @@ interface AppState {
     stopDraggingLayer: () => void;
     updateLayerTransform: (
         id: string,
-        transform: Partial<Pick<Layer, 'position' | 'rotation' | 'scale' | 'normal' | 'flipX' | 'flipY'>>
+        transform: Partial<Pick<Layer, 'position' | 'rotation' | 'scale' | 'normal' | 'flipX' | 'flipY' | 'rotationZ'>>
     ) => void;
     toggleLayerVisibility: (id: string) => void; // 🆕
     toggleLayerLock: (id: string) => void; // 🆕
+
+    // Animation State
+    animationType: 'static' | 'walk' | 'waves' | 'knit';
+    animationSpeed: number;
+    setAnimationType: (type: 'static' | 'walk' | 'waves' | 'knit') => void;
+    setAnimationSpeed: (speed: number) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -42,6 +49,12 @@ export const useStore = create<AppState>((set) => ({
     layers: [],
     activeLayerId: null,
     draggingLayerId: null,
+
+    // Animation Defaults
+    animationType: 'static',
+    animationSpeed: 0.5,
+    setAnimationType: (type) => set({ animationType: type }),
+    setAnimationSpeed: (speed) => set({ animationSpeed: speed }),
 
     setTshirtColor: (color) => set({ tshirtColor: color }),
 
@@ -97,6 +110,7 @@ export const useStore = create<AppState>((set) => ({
                         normal: transform.normal ?? l.normal,
                         flipX: transform.flipX ?? l.flipX,
                         flipY: transform.flipY ?? l.flipY,
+                        rotationZ: transform.rotationZ ?? l.rotationZ,
                     }
                     : l
             ),
