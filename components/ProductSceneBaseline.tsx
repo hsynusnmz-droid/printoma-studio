@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useMemo, useLayoutEffect, useRef, useState, useEffect } from 'react';
-import { Canvas, useThree, useFrame, createPortal, ThreeEvent } from '@react-three/fiber';
-import { useGLTF, Environment, OrbitControls, Center, Html } from '@react-three/drei';
+import React, { useLayoutEffect, useMemo, useRef, useEffect } from 'react';
+import { Canvas, useThree, useFrame, ThreeEvent, createPortal } from '@react-three/fiber';
+import { useGLTF, Environment, OrbitControls, Center } from '@react-three/drei';
 import * as THREE from 'three';
-import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useStore, type Layer } from '@/store/useStore';
-import { LayerDecal } from './LayerDecal';
-import { MeshDebugger } from './MeshDebugger';
+import { LayerDecal } from '@/components/LayerDecal';
 
 interface ProductSceneBaselineProps {
     modelPath: string;
@@ -15,289 +14,332 @@ interface ProductSceneBaselineProps {
     position?: [number, number, number];
 }
 
-// Helper to merge body parts into one invisible surface for seamless decals
-function buildCombinedBodyMesh(root: THREE.Object3D): THREE.Mesh | null {
-    const parts: THREE.Mesh[] = [];
+const applyTShirtColor = (
+    colorHex: string,
+    baseMaterialsRef: React.MutableRefObject<THREE.MeshStandardMaterial[]>
+) => {
+    if (!/^#[0-9A-F]{6}$/i.test(colorHex)) return;
 
-    root.traverse((child) => {
-        if (!(child instanceof THREE.Mesh)) return;
+    const c = new THREE.Color(colorHex);
 
-        const name = child.name.toLowerCase();
-        const parentName = child.parent?.name.toLowerCase() ?? '';
-
-        // Identify T-shirt parts: Object_8 (breast), sleeves, body parts
-        if (
-            name.includes('object_8') ||
-            name.includes('sleeve') ||
-            parentName.includes('body_front') ||
-            parentName.includes('body_back') ||
-            parentName.includes('sleeves')
-        ) {
-            parts.push(child);
-        }
-    });
-
-    if (!parts.length) return null;
-
-    const geometries: THREE.BufferGeometry[] = parts.map((mesh) => {
-        const geom = mesh.geometry.clone();
-        // Bake World Matrix into geometry positions
-        geom.applyMatrix4(mesh.matrixWorld);
-        return geom;
-    });
-
-    // Merge all geometries into one
-    const merged = BufferGeometryUtils.mergeGeometries(geometries, true);
-    if (!merged) return null;
-
-    const combined = new THREE.Mesh(
-        merged,
-        new THREE.MeshBasicMaterial({ visible: false }) // Invisible hit target
-    );
-    combined.name = 'Combined_Body_Surface';
-
-    // Add to root so it exists in the scene graph (optional, but good for raycaster if recursive)
-    root.add(combined);
-
-    return combined;
-}
-
-// Deterministic Chest Calculation Helper from Bounding Box
-function getChestLocalFromBounds(
-    mesh: THREE.Mesh,
-    camera: THREE.Camera
-): [number, number, number] | null {
-    const box = new THREE.Box3().setFromObject(mesh);
-    if (!box.isEmpty()) {
-        const center = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
-
-        // Chest height: center Y minus 20% of height (approx upper chest)
-        const chestY = center.y - size.y * 0.2;
-
-        // Two candidates for front: Max Z and Min Z (at the calculated chest X, Y)
-        const frontLocalCandidate1 = new THREE.Vector3(center.x, chestY, box.max.z);
-        const frontLocalCandidate2 = new THREE.Vector3(center.x, chestY, box.min.z);
-
-        // Convert to World to compare distance with camera
-        const world1 = mesh.localToWorld(frontLocalCandidate1.clone());
-        const world2 = mesh.localToWorld(frontLocalCandidate2.clone());
-
-        const camPos = camera.position.clone();
-        const dist1 = camPos.distanceTo(world1);
-        const dist2 = camPos.distanceTo(world2);
-
-        // Pick closer face (front facing camera)
-        const chosenWorld = dist1 < dist2 ? world1 : world2;
-
-        // Convert chosen point back to Local Space
-        const chosenLocal = mesh.worldToLocal(chosenWorld.clone());
-        return [chosenLocal.x, chosenLocal.y, chosenLocal.z];
-    }
-    return null;
-}
-
-const applyTShirtColor = (scene: THREE.Group, colorHex: string) => {
-    if (!colorHex || typeof colorHex !== 'string') return;
-    const targetColor = new THREE.Color(colorHex);
-
-    scene.traverse((child) => {
-        if (child instanceof THREE.Mesh && child.material) {
-            const materials = Array.isArray(child.material) ? child.material : [child.material];
-            materials.forEach((mat) => {
-                if (mat instanceof THREE.MeshStandardMaterial) {
-                    mat.color.setHex(0xffffff).multiply(targetColor);
-                    mat.needsUpdate = true;
-                }
-            });
+    baseMaterialsRef.current.forEach((mat) => {
+        // ✅ FIX: Sadece Decal olmayan materyalleri güncelle
+        if (!mat.userData.isDecal) {
+            mat.color.setHex(0xffffff).multiply(c);
+            mat.needsUpdate = true;
         }
     });
 };
 
-function BaselineModel({ modelPath, scale, position }: ProductSceneBaselineProps) {
-    const tshirtColor = useStore((state) => state.tshirtColor);
-    const layers = useStore((state): Layer[] => state.layers);
-    const draggingLayerId = useStore((state) => state.draggingLayerId);
-    const startDraggingLayer = useStore((state) => state.startDraggingLayer);
-    const stopDraggingLayer = useStore((state) => state.stopDraggingLayer);
-    const updateLayerTransform = useStore((state) => state.updateLayerTransform);
-
-    // State
-    const [overrideTargetMesh, setOverrideTargetMesh] = useState<THREE.Mesh | null>(null);
+function BaselineModel({
+    modelPath,
+    scale = 1,
+    position = [0, 0, 0],
+}: ProductSceneBaselineProps) {
+    const tshirtColor = useStore((s) => s.tshirtColor);
+    const layers = useStore((s) => s.layers);
+    const draggingLayerId = useStore((s) => s.draggingLayerId);
+    const startDraggingLayer = useStore((s) => s.startDraggingLayer);
+    const stopDraggingLayer = useStore((s) => s.stopDraggingLayer);
+    const updateLayerTransform = useStore((s) => s.updateLayerTransform);
 
     const gltf = useGLTF(modelPath);
     const scene = useMemo(() => gltf.scene.clone(), [gltf.scene]);
 
-    const { camera, gl } = useThree();
-    const raycaster = useRef(new THREE.Raycaster());
+    const baseMaterialsRef = useRef<THREE.MeshStandardMaterial[]>([]);
+    const targetMeshRef = useRef<THREE.Mesh | null>(null);
+    const boundsRef = useRef<THREE.Box3 | null>(null);
+    const prevLayerCount = useRef(layers.length);
+
+    const [isCameraInside, setIsCameraInside] = React.useState(false);
+
     const pointer = useRef(new THREE.Vector2());
+    const raycaster = useRef(new THREE.Raycaster());
+    const { camera, gl } = useThree();
 
-    // Combined Target Mesh Logic
-    const targetMesh = useMemo<THREE.Mesh | null>(() => {
-        // Try to build a combined surface first
-        const combined = buildCombinedBodyMesh(scene);
-        if (combined) {
-            console.log("Combined Body Surface created successfully.");
-            return combined;
-        }
+    // 1) Materyalleri klonla ve whitelist'e al
+    useLayoutEffect(() => {
+        baseMaterialsRef.current = [];
 
-        // Fallback: Object_8 or Body_Front
-        const found = scene.getObjectByName('Object_8');
-        if (found && (found as THREE.Mesh).isMesh) {
-            return found as THREE.Mesh;
-        }
-
-        let fallback: THREE.Mesh | null = null;
         scene.traverse((child) => {
-            if (
-                child instanceof THREE.Mesh &&
-                (child.name.toLowerCase().includes('body_front') ||
-                    child.parent?.name.toLowerCase().includes('body_front'))
-            ) {
-                if (!fallback) fallback = child;
+            if (!(child instanceof THREE.Mesh) || !child.material) return;
+
+            const materials = Array.isArray(child.material)
+                ? child.material
+                : [child.material];
+
+            const cloned: THREE.Material[] = [];
+
+            materials.forEach((mat) => {
+                if (mat instanceof THREE.MeshStandardMaterial) {
+                    const clone = mat.clone();
+                    // ✅ PBR iyileştirmesi
+                    clone.roughness = 0.85; // Kumaş dokusu
+                    clone.metalness = 0.05;
+                    baseMaterialsRef.current.push(clone);
+                    cloned.push(clone);
+                } else {
+                    cloned.push(mat.clone());
+                }
+            });
+
+            child.material = Array.isArray(child.material) ? cloned : cloned[0];
+        });
+    }, [scene]);
+
+    // 2) Rengi uygula
+    useLayoutEffect(() => {
+        applyTShirtColor(tshirtColor, baseMaterialsRef);
+    }, [tshirtColor]);
+
+    // 3) Unified Interaction Surface (Merged Mesh)
+    const targetMesh = useMemo(() => {
+        const geometries: THREE.BufferGeometry[] = [];
+
+        scene.traverse((child) => {
+            if (!(child instanceof THREE.Mesh) || !child.geometry) return;
+
+            // ✅ Filter Logic:
+            // Include: Object_8 (Body) AND Object_10 to Object_20 (Sleeves, etc.)
+            // Exclude: Object_6 (Collar/Seams)
+
+            const isMainBody = child.name === 'Object_8';
+            const isExtraPart = child.name.startsWith('Object_') &&
+                parseInt(child.name.split('_')[1]) >= 10 &&
+                parseInt(child.name.split('_')[1]) <= 20;
+
+            const isCollar = child.name === 'Object_6';
+
+            if ((isMainBody || isExtraPart) && !isCollar) {
+                const geom = child.geometry.clone();
+                // Bake world transform into geometry
+                child.updateMatrixWorld();
+                geom.applyMatrix4(child.matrixWorld);
+                geometries.push(geom);
             }
         });
 
-        return fallback;
+        if (geometries.length === 0) return null;
+
+        const mergedGeometry = mergeGeometries(geometries);
+        const material = new THREE.MeshBasicMaterial({
+            visible: false, // Görünmez ama raycast yapılabilir
+            opacity: 0,
+            transparent: true,
+            depthWrite: false,
+        });
+
+        const mesh = new THREE.Mesh(mergedGeometry, material);
+        // Container'ın transformunu sıfırla çünkü geometriye bake ettik
+        mesh.position.set(0, 0, 0);
+        mesh.rotation.set(0, 0, 0);
+        mesh.scale.set(1, 1, 1);
+
+        return mesh;
     }, [scene]);
 
-    // Use override if available, else auto-found mesh
-    const effectiveTargetMesh = overrideTargetMesh ?? targetMesh;
-
+    // Update refs for handlers
     useLayoutEffect(() => {
-        applyTShirtColor(scene, tshirtColor);
-    }, [scene, tshirtColor]);
-
-    // Calculate Chest Position (Bounding Box Strategy) using effectiveTargetMesh
-    const chestLocal = useMemo(() => {
-        if (!effectiveTargetMesh) return null;
-
-        // Ensure matrices are up to date for localToWorld calculations
-        effectiveTargetMesh.updateMatrixWorld(true);
-
-        const result = getChestLocalFromBounds(effectiveTargetMesh, camera);
-        if (result) {
-            console.log("Chest Position (Bounds/Memo):", result, "Mesh:", effectiveTargetMesh.name);
+        targetMeshRef.current = targetMesh;
+        if (targetMesh) {
+            boundsRef.current = new THREE.Box3().setFromObject(targetMesh);
+        } else {
+            boundsRef.current = null;
         }
-        return result;
-    }, [effectiveTargetMesh, camera]);
+    }, [targetMesh]);
 
-    // Auto-place new layers
-    const prevLayerCount = useRef(0);
+    // 4) Center-Camera Spawn Logic
     useEffect(() => {
-        if (!chestLocal) {
-            prevLayerCount.current = layers.length; // Sync
-            return;
-        }
-
         if (layers.length > prevLayerCount.current) {
-            const newLayer = layers[layers.length - 1];
-            updateLayerTransform(newLayer.id, { position: chestLocal });
+            // Yeni layer eklendi
+            const newLayerId = layers[layers.length - 1].id;
+            const targetMesh = targetMeshRef.current;
+
+            if (targetMesh) {
+                // Kamera merkezinden raycast at
+                raycaster.current.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const hits = raycaster.current.intersectObject(targetMesh, true);
+
+                if (hits.length > 0) {
+                    const hit = hits[0];
+                    const hitPointLocal = targetMesh.worldToLocal(hit.point.clone());
+                    // Normal vector (eğer varsa)
+                    const normal = hit.face?.normal.clone().transformDirection(targetMesh.matrixWorld);
+
+                    updateLayerTransform(newLayerId, {
+                        position: [hitPointLocal.x, hitPointLocal.y, hitPointLocal.z],
+                        normal: normal ? [normal.x, normal.y, normal.z] : undefined,
+                    });
+                } else {
+                    // Boşluğa bakıyorsa default pozisyon (Göğüs)
+                    updateLayerTransform(newLayerId, {
+                        position: [0, 0.2, 0.15],
+                    });
+                }
+            }
         }
         prevLayerCount.current = layers.length;
-    }, [layers.length, layers, chestLocal, updateLayerTransform]);
+    }, [layers.length, camera, updateLayerTransform]);
 
+    // 5) Pointer move
     const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
+        if (!draggingLayerId) return;
+
         pointer.current.set(
             (e.clientX / gl.domElement.clientWidth) * 2 - 1,
             -(e.clientY / gl.domElement.clientHeight) * 2 + 1
         );
     };
 
-    // Drag Logic Loop (World -> Local conversion)
-    useFrame(() => {
-        if (!draggingLayerId || !effectiveTargetMesh) return;
+    // 6) Drag başlangıcı (kilitli layer kontrol ekle)
+    const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
 
+        const targetMesh = targetMeshRef.current;
+        if (!targetMesh || layers.length === 0) return;
+
+        pointer.current.set(
+            (e.clientX / gl.domElement.clientWidth) * 2 - 1,
+            -(e.clientY / gl.domElement.clientHeight) * 2 + 1
+        );
         raycaster.current.setFromCamera(pointer.current, camera);
-        const hits = raycaster.current.intersectObject(effectiveTargetMesh, true);
-
+        const hits = raycaster.current.intersectObject(targetMesh, true);
         if (!hits.length) return;
 
-        const worldPoint = hits[0].point.clone();
-        const localPoint = effectiveTargetMesh.worldToLocal(worldPoint);
+        const hitPointWorld = hits[0].point.clone();
+        const hitPointLocal = targetMesh.worldToLocal(hitPointWorld);
+
+        let nearest: Layer | null = null;
+        let minDist = Infinity;
+
+        // ✅ Sadece görünür ve kilitli olmayan layerları seç (Loop refactoring for TS inference)
+        for (const layer of layers) {
+            if (layer.visible === false || layer.locked) continue;
+
+            const d = new THREE.Vector3(...layer.position).distanceTo(hitPointLocal);
+            if (d < minDist) {
+                minDist = d;
+                nearest = layer;
+            }
+        }
+
+        if (nearest) {
+            startDraggingLayer(nearest.id);
+        }
+    };
+
+    // 7) Drag bitişi
+    const handlePointerUp = (e: ThreeEvent<PointerEvent>) => {
+        e.stopPropagation();
+        stopDraggingLayer();
+    };
+
+    // 8) ✅ PERFORMANS: useFrame optimizasyonu
+    useFrame(() => {
+        const targetMesh = targetMeshRef.current;
+
+        // Kamera içinde mi kontrolü
+        if (targetMesh && boundsRef.current) {
+            const inside = boundsRef.current.containsPoint(camera.position);
+            if (inside !== isCameraInside) {
+                setIsCameraInside(inside);
+            }
+        }
+
+        // ✅ FIX: Sadece drag sırasında raycast yap
+        if (!draggingLayerId || !targetMesh) return;
+
+        raycaster.current.setFromCamera(pointer.current, camera);
+        const hits = raycaster.current.intersectObject(targetMesh, true);
+        if (!hits.length) return;
+
+        const hit = hits[0];
+        const hitPointWorld = hit.point.clone();
+        const hitPointLocal = targetMesh.worldToLocal(hitPointWorld);
+
+        // ✅ Normal vector'ü de kaydet (LayerDecal rotation için)
+        const normal = hit.face?.normal.clone().transformDirection(targetMesh.matrixWorld);
 
         updateLayerTransform(draggingLayerId, {
-            position: [localPoint.x, localPoint.y, localPoint.z]
+            position: [hitPointLocal.x, hitPointLocal.y, hitPointLocal.z],
+            normal: normal ? [normal.x, normal.y, normal.z] : undefined,
         });
     });
 
     return (
         <Center
             onPointerMove={handlePointerMove}
-            onPointerDown={(e) => {
-                e.stopPropagation();
-                if (!effectiveTargetMesh) return;
-
-                pointer.current.set(
-                    (e.clientX / gl.domElement.clientWidth) * 2 - 1,
-                    -(e.clientY / gl.domElement.clientHeight) * 2 + 1
-                );
-
-                raycaster.current.setFromCamera(pointer.current, camera);
-                const hits = raycaster.current.intersectObject(effectiveTargetMesh, true);
-
-                if (!hits.length) return;
-
-                const worldPoint = hits[0].point.clone();
-                const localPoint = effectiveTargetMesh.worldToLocal(worldPoint);
-
-                let nearest: Layer | null = null;
-                let minDist = Infinity;
-
-                // Distance check in LOCAL space
-                for (const layer of layers) {
-                    const d = new THREE.Vector3(...layer.position).distanceTo(localPoint);
-                    if (d < minDist) { minDist = d; nearest = layer; }
-                }
-
-                if (nearest) startDraggingLayer(nearest.id);
-            }}
-            onPointerUp={(e) => {
-                e.stopPropagation();
-                stopDraggingLayer();
-            }}
+            onPointerDown={handlePointerDown}
+            onPointerUp={handlePointerUp}
         >
             <primitive object={scene} scale={scale} position={position} />
-            {effectiveTargetMesh && layers.map((layer: Layer) => (
-                <React.Fragment key={layer.id}>
-                    {createPortal(
-                        <LayerDecal layer={layer} />,
-                        effectiveTargetMesh
-                    )}
-                </React.Fragment>
-            ))}
 
-            {/* Mesh Debugger Overlay */}
-            <Html>
-                <MeshDebugger
-                    root={scene}
-                    onSelectMesh={setOverrideTargetMesh}
+            {/* ✅ Unified Interaction Mesh (Phantom) */}
+            {targetMesh && (
+                <primitive
+                    object={targetMesh}
+                    scale={scale}
+                    position={position}
                 />
-            </Html>
+            )}
+
+            {targetMesh &&
+                !isCameraInside &&
+                layers
+                    .filter(layer => layer.visible !== false) // ✅ Görünmez layerları render etme
+                    .map((layer: Layer) => (
+                        <React.Fragment key={layer.id}>
+                            {createPortal(
+                                <LayerDecal layer={layer} />,
+                                targetMesh
+                            )}
+                        </React.Fragment>
+                    ))}
         </Center>
     );
 }
 
-export default function ProductSceneBaseline({ modelPath, scale = 1, position = [0, 0, 0] }: ProductSceneBaselineProps) {
+export default function ProductSceneBaseline({
+    modelPath,
+    scale = 1,
+    position = [0, 0, 0],
+}: ProductSceneBaselineProps) {
+    const draggingLayerId = useStore((s) => s.draggingLayerId);
+
     return (
-        <div className="w-full h-full relative bg-[#f3f4f6]">
+        <div className="w-full h-full relative bg-gradient-to-br from-slate-50 to-slate-100">
             <Canvas
                 shadows
                 camera={{ fov: 35, position: [0, 1.3, 2.2] }}
-                gl={{ toneMapping: THREE.ACESFilmicToneMapping }}
+                gl={{
+                    toneMapping: THREE.ACESFilmicToneMapping,
+                    antialias: true, // ✅ Keskin kenarlar için
+                }}
             >
-                <ambientLight intensity={0.25} />
-                <directionalLight intensity={0.5} position={[1, 2, 2]} />
+                {/* ✅ Işıklandırma iyileştirmesi */}
+                <ambientLight intensity={0.3} />
+                <directionalLight
+                    intensity={0.6}
+                    position={[2, 3, 2]}
+                    castShadow
+                />
                 <Environment preset="city" />
 
-                <BaselineModel
-                    modelPath={modelPath}
-                    scale={scale}
-                    position={position}
-                />
+                <BaselineModel modelPath={modelPath} scale={scale} position={position} />
 
-                <OrbitControls makeDefault minDistance={1} maxDistance={4} enablePan={false} />
+                <OrbitControls
+                    makeDefault
+                    minDistance={1.2}
+                    maxDistance={4}
+                    enablePan={false}
+                    enabled={!draggingLayerId} // Drag varken kamera dönmesin
+                    dampingFactor={0.05} // ✅ Smooth rotation
+                    enableDamping
+                />
             </Canvas>
         </div>
     );
 }
+
+useGLTF.preload('/t-shirt.glb');

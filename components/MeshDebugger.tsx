@@ -18,6 +18,7 @@ interface MeshDebuggerProps {
 export function MeshDebugger({ root, onSelectMesh }: MeshDebuggerProps) {
     const [list, setList] = React.useState<DebugMeshInfo[]>([]);
     const [selectedId, setSelectedId] = React.useState<string | null>(null);
+    const [isMinimized, setIsMinimized] = React.useState(false);
 
     React.useEffect(() => {
         if (!root) {
@@ -44,43 +45,74 @@ export function MeshDebugger({ root, onSelectMesh }: MeshDebuggerProps) {
         if ((info.object as THREE.Mesh).isMesh && onSelectMesh) {
             onSelectMesh(info.object as THREE.Mesh);
 
-            // Console’a bounding box yaz
+            // Console'a detaylı bilgi
             const mesh = info.object as THREE.Mesh;
             const box = new THREE.Box3().setFromObject(mesh);
             const center = box.getCenter(new THREE.Vector3());
             const size = box.getSize(new THREE.Vector3());
-            // eslint-disable-next-line no-console
-            console.log('DEBUG MESH:', {
-                name: mesh.name,
-                box,
-                center,
-                size,
-            });
+
+            console.group('🔍 MESH DEBUG');
+            console.log('Name:', mesh.name);
+            console.log('UUID:', mesh.uuid);
+            console.log('Bounding Box:', box);
+            console.log('Center:', center);
+            console.log('Size:', size);
+            console.log('Geometry:', mesh.geometry);
+            console.log('Material:', mesh.material);
+            console.groupEnd();
         }
     };
 
+    // ✅ FIX: Production'da render edilmez
+    if (process.env.NODE_ENV === 'production') {
+        return null;
+    }
+
     return (
-        <div className="fixed bottom-4 left-4 max-h-80 w-80 overflow-y-auto bg-white/90 border border-slate-200 rounded-lg shadow-xl text-xs font-mono z-50">
-            <div className="px-3 py-2 border-b border-slate-200 font-semibold text-slate-700">
-                Mesh Debugger
+        <div className="fixed bottom-4 left-4 max-h-96 w-80 bg-white/95 backdrop-blur-sm border border-slate-300 rounded-lg shadow-2xl text-xs font-mono z-[9999] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 bg-slate-50">
+                <span className="font-semibold text-slate-700">🔧 Mesh Debugger</span>
+                <button
+                    onClick={() => setIsMinimized(!isMinimized)}
+                    className="text-slate-500 hover:text-slate-700 px-2 py-1 rounded hover:bg-slate-200"
+                >
+                    {isMinimized ? '▲' : '▼'}
+                </button>
             </div>
-            <div className="p-2 space-y-1">
-                {list.map((info) => (
-                    <button
-                        key={info.uuid}
-                        onClick={() => handleClick(info)}
-                        className={`w-full text-left px-2 py-1 rounded ${selectedId === info.uuid ? 'bg-blue-100 text-blue-800' : 'hover:bg-slate-100'
-                            }`}
-                    >
-                        <span style={{ paddingLeft: info.depth * 8 }}>
-                            [{info.type}] {info.name}
-                        </span>
-                    </button>
-                ))}
-                {list.length === 0 && (
-                    <div className="text-slate-400 px-2 py-1">No meshes loaded.</div>
-                )}
-            </div>
+
+            {/* Content */}
+            {!isMinimized && (
+                <div className="p-2 space-y-1 max-h-80 overflow-y-auto">
+                    {list.map((info) => (
+                        <button
+                            key={info.uuid}
+                            onClick={() => handleClick(info)}
+                            className={`w-full text-left px-2 py-1 rounded transition-colors ${selectedId === info.uuid
+                                ? 'bg-blue-500 text-white font-semibold'
+                                : 'hover:bg-slate-100 text-slate-700'
+                                }`}
+                        >
+                            <span style={{ paddingLeft: info.depth * 8 }}>
+                                <span className="text-slate-400">[{info.type}]</span>{' '}
+                                {info.name}
+                            </span>
+                        </button>
+                    ))}
+                    {list.length === 0 && (
+                        <div className="text-slate-400 px-2 py-4 text-center">
+                            No meshes loaded yet.
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Stats Footer */}
+            {!isMinimized && list.length > 0 && (
+                <div className="px-3 py-2 border-t border-slate-200 bg-slate-50 text-slate-500">
+                    Total Objects: <span className="font-semibold text-slate-700">{list.length}</span>
+                </div>
+            )}
         </div>
     );
 }

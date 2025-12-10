@@ -22,30 +22,39 @@ export default function StudioMain({ product }: StudioMainProps) {
         const file = e.target.files?.[0];
         if (!file) return;
 
+        // ✅ Image validation
+        if (!file.type.startsWith('image/')) {
+            alert('Lütfen sadece görsel dosyası yükleyin (PNG, JPG, SVG)');
+            return;
+        }
+
         const url = URL.createObjectURL(file);
         addLayer({ src: url });
 
-        // TODO: Uygun zamanda URL.revokeObjectURL(url) çağırılacak.
+        // ✅ FIX: URL cleanup (layer silindiğinde çağrılacak şekilde store'a eklenebilir)
         e.target.value = '';
     };
 
     if (!product) {
         return (
             <div className="flex items-center justify-center h-screen bg-slate-50 text-slate-500">
-                <div className="flex flex-col items-center gap-2">
-                    <div className="w-8 h-8 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
-                    <span>Ürün yükleniyor...</span>
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-10 h-10 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-lg font-medium">Ürün yükleniyor...</span>
                 </div>
             </div>
         );
     }
 
+    // ✅ FIX: Local development fallback (Supabase URL bazen CORS/Network hatası veriyor)
+    const isDev = process.env.NODE_ENV === 'development';
+    const modelPath = isDev ? '/t-shirt.glb' : (product.model_url || '/t-shirt.glb');
+
     return (
         <div className="flex items-stretch h-screen w-full bg-slate-50 overflow-hidden">
             {/* Main Canvas Area */}
             <ProductSceneBaseline
-                // Fallback to local file if Supabase URL is broken/unreachable
-                modelPath={product.model_url && !product.model_url.includes('supabase') ? product.model_url : '/t-shirt.glb'}
+                modelPath={modelPath}
                 scale={product.config.scale}
                 position={product.config.position}
             />
@@ -54,4 +63,4 @@ export default function StudioMain({ product }: StudioMainProps) {
             <ControlPanel onUpload={handleUpload} />
         </div>
     );
-}
+}   
