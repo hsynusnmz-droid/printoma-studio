@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { Upload, Layers, Type, Download, Eye, EyeOff, Lock, Unlock } from 'lucide-react';
+import { Upload, Layers, Type, Download, Eye, EyeOff, Lock, Unlock, ArrowLeftRight, ArrowUpDown } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 
 interface ControlPanelProps {
@@ -203,6 +203,30 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
                         }
                         className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
                     />
+                    {/* Flip Controls */}
+                    <div className="flex gap-2 pt-2 border-t border-slate-200 mt-2">
+                        <button
+                            onClick={() => updateLayerTransform(activeLayer.id, { flipX: !activeLayer.flipX })}
+                            className={`flex-1 py-1.5 rounded text-xs flex items-center justify-center gap-2 transition-colors border ${activeLayer.flipX
+                                ? 'bg-blue-50 text-blue-600 border-blue-200 font-medium'
+                                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                            title="Yatay Aynala"
+                        >
+                            <ArrowLeftRight className="w-3.5 h-3.5" />
+                            Yatay Çevir
+                        </button>
+                        <button
+                            onClick={() => updateLayerTransform(activeLayer.id, { flipY: !activeLayer.flipY })}
+                            className={`flex-1 py-1.5 rounded text-xs flex items-center justify-center gap-2 transition-colors border ${activeLayer.flipY
+                                ? 'bg-blue-50 text-blue-600 border-blue-200 font-medium'
+                                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                            title="Dikey Aynala"
+                        >
+                            <ArrowUpDown className="w-3.5 h-3.5" />
+                            Dikey Çevir
+                        </button>
+                    </div>
+
                     <p className="text-xs text-slate-400 text-center">
                         Sürükle-bırak ile pozisyon ayarla
                     </p>

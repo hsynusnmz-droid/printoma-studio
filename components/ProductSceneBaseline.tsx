@@ -281,11 +281,24 @@ function BaselineModel({
             // 1. Pozisyonu güncelle (GPU)
             activeMesh.position.set(hitPointLocal.x, hitPointLocal.y, hitPointLocal.z);
 
-            // 2. Rotasyonu güncelle (GPU) - Stable Helper ile
+            // 2. Rotasyonu ve Scale'i güncelle (GPU) - Stable Helper & Mirror Fix
             if (normal) {
                 const n = new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
-                const [rx, ry, rz] = calculateDecalRotation(n);
+                const { rotation: [rx, ry, rz], scaleX } = calculateDecalRotation(n);
+
                 activeMesh.rotation.set(rx, ry, rz);
+
+                // Mirror fix için scale güncellemesi
+                const layer = layers.find(l => l.id === draggingLayerId);
+                if (layer) {
+                    const manualFlipX = layer.flipX ? -1 : 1;
+                    const manualFlipY = layer.flipY ? -1 : 1;
+                    activeMesh.scale.set(
+                        layer.scale * scaleX * manualFlipX,
+                        layer.scale * manualFlipY,
+                        layer.scale
+                    );
+                }
             }
 
             // 3. Commit için referansı sakla (React state update YOK)

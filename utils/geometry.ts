@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 
 /**
- * Calculates a stable rotation (Euler XYZ) for a decal given a surface normal.
- * Ensures the 'Up' vector of the decal aligns with the World 'Up' (Y-axis)
- * to prevent spinning/unpredictable rotation on curved surfaces.
+ * Calculates a stable rotation (Euler XYZ) and scale factor for a decal given a surface normal.
+ * Ensures the 'Up' vector of the decal aligns with the World 'Up' (Y-axis).
+ * Also handles mirroring on the back of the model by flipping the X scale.
  * 
  * @param normal The surface normal vector (normalized)
- * @returns [x, y, z] Euler angles
+ * @returns { rotation: [x, y, z], scaleX: number }
  */
-export function calculateDecalRotation(normal: THREE.Vector3): [number, number, number] {
+export function calculateDecalRotation(normal: THREE.Vector3): { rotation: [number, number, number]; scaleX: number } {
     const up = new THREE.Vector3(0, 1, 0);
 
     // Handle singularity: if normal is perfectly Up (0,1,0) or Down (0,-1,0)
@@ -34,10 +34,16 @@ export function calculateDecalRotation(normal: THREE.Vector3): [number, number, 
     const euler = new THREE.Euler().setFromRotationMatrix(matrix, 'XYZ');
 
     // Decal Logic Adjustment:
-    // DecalGeometry is usually projected along Z.
-    // However, our Texture mapping often requires flipping.
-    // Adding Math.PI to X rotates it 180 degrees to face "into" the normal or correct the texture flip.
-    // Based on previous logic: activeMesh.rotation.set(e.x + Math.PI, e.y, e.z);
+    // Adding Math.PI to X rotates it 180 degrees.
+    // This fixes the "Upside Down" issue reported by the user.
+    const rotationX = euler.x + Math.PI;
 
-    return [euler.x + Math.PI, euler.y, euler.z];
+    // ✅ Mirror Fix: If on the back (Z < 0), flip horizontal scale
+    // This fixes the "Mirrored" issue reported on the back.
+    const scaleX = normal.z < 0 ? -1 : 1;
+
+    return {
+        rotation: [rotationX, euler.y, euler.z],
+        scaleX
+    };
 }

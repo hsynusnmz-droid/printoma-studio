@@ -12,6 +12,8 @@ export interface Layer {
     normal?: [number, number, number]; // Surface normal (raycasting için)
     locked?: boolean; // 🆕 Katman kilitleme
     visible?: boolean; // 🆕 Görünürlük toggle
+    flipX?: boolean; // 🆕 Yatay Aynalama
+    flipY?: boolean; // 🆕 Dikey Aynalama
 }
 
 interface AppState {
@@ -29,7 +31,7 @@ interface AppState {
     stopDraggingLayer: () => void;
     updateLayerTransform: (
         id: string,
-        transform: Partial<Pick<Layer, 'position' | 'rotation' | 'scale' | 'normal'>>
+        transform: Partial<Pick<Layer, 'position' | 'rotation' | 'scale' | 'normal' | 'flipX' | 'flipY'>>
     ) => void;
     toggleLayerVisibility: (id: string) => void; // 🆕
     toggleLayerLock: (id: string) => void; // 🆕
@@ -73,7 +75,7 @@ export const useStore = create<AppState>((set) => ({
 
     setActiveLayer: (id) => set({ activeLayerId: id }),
 
-    startDraggingLayer: (id) => 
+    startDraggingLayer: (id) =>
         set((state) => {
             const layer = state.layers.find(l => l.id === id);
             // Kilitli katman sürüklenemez
@@ -93,6 +95,8 @@ export const useStore = create<AppState>((set) => ({
                         rotation: transform.rotation ?? l.rotation,
                         scale: transform.scale ?? l.scale,
                         normal: transform.normal ?? l.normal,
+                        flipX: transform.flipX ?? l.flipX,
+                        flipY: transform.flipY ?? l.flipY,
                     }
                     : l
             ),

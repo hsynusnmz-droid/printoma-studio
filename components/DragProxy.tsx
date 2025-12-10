@@ -3,6 +3,7 @@ import React, { useMemo, useRef } from 'react';
 import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { Layer } from '@/store/useStore';
+import { calculateDecalRotation } from '@/utils/geometry';
 
 interface DragProxyProps {
     layer: Layer;
@@ -11,6 +12,12 @@ interface DragProxyProps {
 
 export function DragProxy({ layer, onRef }: DragProxyProps) {
     const baseTexture = useTexture(layer.src) as THREE.Texture;
+
+    // Stable Rotation & Scale Logic
+    const { rotation, scaleX } = useMemo(() => {
+        if (!layer.normal) return { rotation: layer.rotation, scaleX: 1 };
+        return calculateDecalRotation(new THREE.Vector3(...layer.normal).normalize());
+    }, [layer.normal, layer.rotation]);
 
     const configuredTexture = useMemo(() => {
         const t = baseTexture.clone();
@@ -32,8 +39,12 @@ export function DragProxy({ layer, onRef }: DragProxyProps) {
                 if (mesh && onRef) onRef(mesh as THREE.Mesh);
             }}
             position={layer.position} // Initial position from layer
-            rotation={layer.rotation} // Initial rotation
-            scale={layer.scale}      // Scale matches LayerDecal
+            rotation={rotation}
+            scale={[
+                layer.scale * scaleX * (layer.flipX ? -1 : 1),
+                layer.scale * (layer.flipY ? -1 : 1),
+                layer.scale
+            ]}
         >
             {/* Simple Plane for 60fps drag */}
             <planeGeometry args={[1, 1]} />

@@ -28,11 +28,11 @@ export function LayerDecal({ layer, onRef }: LayerDecalProps) {
         };
     }, [configuredTexture]);
 
-    // ✅ FIX #2: Rotation hesaplaması iyileştirildi (Surface'e tam yapışma)
-    const rotation = React.useMemo<[number, number, number]>(() => {
+    // ✅ FIX #2: Rotation ve Scale hesaplaması (Mirror Correction)
+    const { rotation, scaleX } = React.useMemo(() => {
         if (!layer.normal) {
-            // Normal yoksa default rotation
-            return layer.rotation;
+            // Normal yoksa default
+            return { rotation: layer.rotation, scaleX: 1 };
         }
 
         const n = new THREE.Vector3(...layer.normal).normalize();
@@ -55,7 +55,11 @@ export function LayerDecal({ layer, onRef }: LayerDecalProps) {
             }}
             position={layer.position}
             rotation={rotation}
-            scale={layer.scale}
+            scale={[
+                layer.scale * scaleX * (layer.flipX ? -1 : 1),
+                layer.scale * (layer.flipY ? -1 : 1),
+                layer.scale,
+            ]}
         >
             <meshStandardMaterial
                 ref={materialRef}
