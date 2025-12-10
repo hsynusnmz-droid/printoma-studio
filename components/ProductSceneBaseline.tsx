@@ -8,6 +8,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { useStore, type Layer } from '@/store/useStore';
 import { LayerDecal } from '@/components/LayerDecal';
 import { DragProxy } from '@/components/DragProxy';
+import { calculateDecalRotation } from '@/utils/geometry';
 
 interface ProductSceneBaselineProps {
     modelPath: string;
@@ -280,13 +281,11 @@ function BaselineModel({
             // 1. Pozisyonu güncelle (GPU)
             activeMesh.position.set(hitPointLocal.x, hitPointLocal.y, hitPointLocal.z);
 
-            // 2. Rotasyonu güncelle (GPU) - LayerDecal mantığının aynısı
+            // 2. Rotasyonu güncelle (GPU) - Stable Helper ile
             if (normal) {
                 const n = new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
-                const decalForward = new THREE.Vector3(0, 0, 1);
-                const q = new THREE.Quaternion().setFromUnitVectors(decalForward, n);
-                const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
-                activeMesh.rotation.set(e.x + Math.PI, e.y, e.z);
+                const [rx, ry, rz] = calculateDecalRotation(n);
+                activeMesh.rotation.set(rx, ry, rz);
             }
 
             // 3. Commit için referansı sakla (React state update YOK)

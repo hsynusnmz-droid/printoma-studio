@@ -3,6 +3,7 @@ import React from 'react';
 import { Decal, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { Layer } from '@/store/useStore';
+import { calculateDecalRotation } from '@/utils/geometry';
 
 interface LayerDecalProps {
     layer: Layer;
@@ -34,22 +35,8 @@ export function LayerDecal({ layer, onRef }: LayerDecalProps) {
             return layer.rotation;
         }
 
-        const normal = new THREE.Vector3(...layer.normal).normalize();
-
-        // Decal'ın "forward" yönü Z ekseni
-        const decalForward = new THREE.Vector3(0, 0, 1);
-
-        // Surface normal'ine göre quaternion hesapla
-        const quaternion = new THREE.Quaternion().setFromUnitVectors(
-            decalForward,
-            normal
-        );
-
-        const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
-
-        // ✅ FIX: Texture orientation düzeltmesi
-        // X ekseninde 180° döndürme → Görsel baş aşağı gelmez
-        return [euler.x + Math.PI, euler.y, euler.z];
+        const n = new THREE.Vector3(...layer.normal).normalize();
+        return calculateDecalRotation(n);
     }, [layer.normal, layer.rotation]);
 
     const materialRef = React.useRef<THREE.MeshStandardMaterial | null>(null);
