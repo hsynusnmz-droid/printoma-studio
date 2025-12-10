@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useStore, type Layer } from '@/store/useStore';
 import { LayerDecal } from '@/components/LayerDecal';
+import { DragProxy } from '@/components/DragProxy';
 
 interface ProductSceneBaselineProps {
     modelPath: string;
@@ -50,6 +51,10 @@ function BaselineModel({
     const targetMeshRef = useRef<THREE.Mesh | null>(null);
     const boundsRef = useRef<THREE.Box3 | null>(null);
     const prevLayerCount = useRef(layers.length);
+
+    // ✅ FIX: Direct Mutation Refs (Sıfır Gecikme Icin)
+    const layerRefs = useRef<{ [id: string]: THREE.Mesh }>({});
+    const dragCommitRef = useRef<{ id: string; position: [number, number, number]; normal?: [number, number, number] } | null>(null);
 
     const [isCameraInside, setIsCameraInside] = React.useState(false);
 
@@ -229,13 +234,23 @@ function BaselineModel({
         }
     };
 
-    // 7) Drag bitişi
+    // 7) Drag bitişi (Commit Changes)
     const handlePointerUp = (e: ThreeEvent<PointerEvent>) => {
         e.stopPropagation();
+
+        // Eğer sürükleme yapıldıysa, son konumu store'a kaydet
+        if (dragCommitRef.current) {
+            updateLayerTransform(dragCommitRef.current.id, {
+                position: dragCommitRef.current.position,
+                normal: dragCommitRef.current.normal,
+            });
+            dragCommitRef.current = null;
+        }
+
         stopDraggingLayer();
     };
 
-    // 8) ✅ PERFORMANS: useFrame optimizasyonu
+    // 8) ✅ PERFORMANS: useFrame optimizasyonu (Direct Mutation)
     useFrame(() => {
         const targetMesh = targetMeshRef.current;
 
@@ -255,16 +270,33 @@ function BaselineModel({
         if (!hits.length) return;
 
         const hit = hits[0];
-        const hitPointWorld = hit.point.clone();
-        const hitPointLocal = targetMesh.worldToLocal(hitPointWorld);
-
-        // ✅ Normal vector'ü de kaydet (LayerDecal rotation için)
+        const hitPointLocal = targetMesh.worldToLocal(hit.point.clone());
         const normal = hit.face?.normal.clone().transformDirection(targetMesh.matrixWorld);
 
-        updateLayerTransform(draggingLayerId, {
-            position: [hitPointLocal.x, hitPointLocal.y, hitPointLocal.z],
-            normal: normal ? [normal.x, normal.y, normal.z] : undefined,
-        });
+        // --- DIRECT MUTATION START ---
+        const activeMesh = layerRefs.current[draggingLayerId];
+
+        if (activeMesh) {
+            // 1. Pozisyonu güncelle (GPU)
+            activeMesh.position.set(hitPointLocal.x, hitPointLocal.y, hitPointLocal.z);
+
+            // 2. Rotasyonu güncelle (GPU) - LayerDecal mantığının aynısı
+            if (normal) {
+                const n = new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
+                const decalForward = new THREE.Vector3(0, 0, 1);
+                const q = new THREE.Quaternion().setFromUnitVectors(decalForward, n);
+                const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
+                activeMesh.rotation.set(e.x + Math.PI, e.y, e.z);
+            }
+
+            // 3. Commit için referansı sakla (React state update YOK)
+            dragCommitRef.current = {
+                id: draggingLayerId,
+                position: [hitPointLocal.x, hitPointLocal.y, hitPointLocal.z] as [number, number, number],
+                normal: normal ? ([normal.x, normal.y, normal.z] as [number, number, number]) : undefined,
+            };
+        }
+        // --- DIRECT MUTATION END ---
     });
 
     return (
@@ -288,14 +320,27 @@ function BaselineModel({
                 !isCameraInside &&
                 layers
                     .filter(layer => layer.visible !== false) // ✅ Görünmez layerları render etme
-                    .map((layer: Layer) => (
-                        <React.Fragment key={layer.id}>
-                            {createPortal(
-                                <LayerDecal layer={layer} />,
-                                targetMesh
-                            )}
-                        </React.Fragment>
-                    ))}
+                    .map((layer: Layer) => {
+                        const isDragging = draggingLayerId === layer.id;
+                        return (
+                            <React.Fragment key={layer.id}>
+                                {createPortal(
+                                    isDragging ? (
+                                        <DragProxy
+                                            layer={layer}
+                                            onRef={(mesh) => { layerRefs.current[layer.id] = mesh; }}
+                                        />
+                                    ) : (
+                                        <LayerDecal
+                                            layer={layer}
+                                            onRef={(mesh) => { layerRefs.current[layer.id] = mesh; }}
+                                        />
+                                    ),
+                                    targetMesh
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
         </Center>
     );
 }
