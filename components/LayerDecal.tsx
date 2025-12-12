@@ -8,9 +8,11 @@ import { calculateDecalRotation } from '@/utils/geometry';
 interface LayerDecalProps {
     layer: Layer;
     onRef?: (mesh: THREE.Mesh) => void;
+    fabricTexture?: THREE.Texture;
+    onPointerDown?: (e: any) => void;
 }
 
-export function LayerDecal({ layer, onRef }: LayerDecalProps) {
+export function LayerDecal({ layer, onRef, fabricTexture, onPointerDown }: LayerDecalProps) {
     const baseTexture = useTexture(layer.src) as THREE.Texture;
 
     // Clone and configure texture in useMemo to avoid mutation side-effects on original texture
@@ -60,6 +62,7 @@ export function LayerDecal({ layer, onRef }: LayerDecalProps) {
                 layer.scale * (layer.flipY ? -1 : 1),
                 layer.scale,
             ]}
+            onPointerDown={onPointerDown} // ✅ Click handling injection
         >
             <meshStandardMaterial
                 ref={materialRef}
@@ -69,8 +72,10 @@ export function LayerDecal({ layer, onRef }: LayerDecalProps) {
                 polygonOffsetFactor={-4} // ✅ FIX: Daha fazla öne çıkar (Outermost visibility)
                 depthTest={true}
                 depthWrite={false}
-                roughness={1.0} // ✅ UPDATED: Tam Mat görünüm (PBR uyumu için)
-                metalness={0}
+                roughness={1.0} // ✅ UPDATED: Tam Mat görünüm
+                metalness={0.0}
+                normalMap={fabricTexture} // ✅ Kumaş dokusu ile birleş
+                normalScale={new THREE.Vector2(0.8, 0.8)} // ✅ FIX: Doku var ama renk kararmasın (3.5 -> 0.8)
                 side={THREE.FrontSide} // Sadece dış yüz
             />
         </Decal>

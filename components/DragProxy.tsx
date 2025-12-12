@@ -8,9 +8,11 @@ import { calculateDecalRotation } from '@/utils/geometry';
 interface DragProxyProps {
     layer: Layer;
     onRef?: (mesh: THREE.Mesh) => void;
+    fabricTexture?: THREE.Texture;
+    onPointerDown?: (e: any) => void;
 }
 
-export function DragProxy({ layer, onRef }: DragProxyProps) {
+export function DragProxy({ layer, onRef, fabricTexture, onPointerDown }: DragProxyProps) {
     const baseTexture = useTexture(layer.src) as THREE.Texture;
 
     // Stable Rotation & Scale Logic
@@ -45,6 +47,7 @@ export function DragProxy({ layer, onRef }: DragProxyProps) {
                 layer.scale * (layer.flipY ? -1 : 1),
                 layer.scale
             ]}
+            onPointerDown={onPointerDown} // ✅ Click handling
         >
             {/* Simple Plane for 60fps drag */}
             <planeGeometry args={[1, 1]} />
@@ -56,8 +59,10 @@ export function DragProxy({ layer, onRef }: DragProxyProps) {
                 polygonOffsetFactor={-10} // Priority over everything
                 depthTest={true}
                 depthWrite={false}
-                roughness={0.9}
-                metalness={0}
+                roughness={1.0}
+                metalness={0.0}
+                normalMap={fabricTexture} // ✅ Fabric Texture Integration
+                normalScale={new THREE.Vector2(0.8, 0.8)}
                 side={THREE.DoubleSide} // Plane might flip, so double side is safer
             />
         </mesh>

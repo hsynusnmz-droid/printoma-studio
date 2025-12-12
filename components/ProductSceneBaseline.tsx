@@ -33,6 +33,7 @@ const applyTShirtColor = (
     });
 };
 
+// ✅ DIAGNOSTIC TOOL: Removed after successful diagnosis
 function BaselineModel({
     modelPath,
     scale = 1,
@@ -49,14 +50,17 @@ function BaselineModel({
 
     const gltf = useGLTF(modelPath);
     // ✅ PBR Upgrade: Load Fabric Normal Map
-    const fabricNormal = useTexture('/textures/fabric_normal.jpg');
+    const rawFabricNormal = useTexture('/textures/fabric_normal.jpg');
 
-    // Texture ayarlarını optimize et
-    useLayoutEffect(() => {
-        fabricNormal.wrapS = fabricNormal.wrapT = THREE.RepeatWrapping;
-        fabricNormal.repeat.set(4, 4); // Dokuyu sıklaştır
-        fabricNormal.colorSpace = THREE.NoColorSpace; // Normal map için gerekli
-    }, [fabricNormal]);
+    // Texture ayarlarını optimize et (Memoized Clone)
+    const fabricNormal = useMemo(() => {
+        const t = rawFabricNormal.clone();
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(6, 6); // ✅ 6x6: Macro zoom için yüksek çözünürlüklü sıklık
+        t.colorSpace = THREE.NoColorSpace;
+        t.needsUpdate = true;
+        return t;
+    }, [rawFabricNormal]);
 
     const scene = useMemo(() => gltf.scene.clone(), [gltf.scene]);
 
@@ -100,12 +104,12 @@ function BaselineModel({
             materials.forEach((mat) => {
                 if (mat instanceof THREE.MeshStandardMaterial) {
                     const clone = mat.clone();
-                    // ✅ PBR iyileştirmesi: High-Fidelity Fabric
-                    clone.roughness = 0.85; // Kumaş matlığı
-                    clone.metalness = 0.05;
+                    // ✅ PBR FIX: "Patlamayan" Mat Kumaş
+                    clone.roughness = 1.0;
+                    clone.metalness = 0.0;
                     clone.normalMap = fabricNormal;
-                    clone.normalScale.set(0.5, 0.5); // Derinlik hissi
-                    clone.envMapIntensity = 1.2; // Işık etkileşimi
+                    clone.normalScale.set(3.5, 3.5); // detayları artır (1.5 -> 3.5)
+                    clone.envMapIntensity = 0.1; // ✅ Yansımayı neredeyse kapattık (Yağlı hissi yok eder)
 
                     baseMaterialsRef.current.push(clone);
                     cloned.push(clone);
@@ -134,14 +138,11 @@ function BaselineModel({
             // Include: Object_8 (Body) AND Object_10 to Object_20 (Sleeves, etc.)
             // Exclude: Object_6 (Collar/Seams)
 
-            const isMainBody = child.name === 'Object_8';
-            const isExtraPart = child.name.startsWith('Object_') &&
-                parseInt(child.name.split('_')[1]) >= 10 &&
-                parseInt(child.name.split('_')[1]) <= 20;
+            // ✅ FIX: New Model Filters (Object_2 - Object_5)
+            const n = child.name;
+            const isTarget = n === 'Object_2' || n === 'Object_3' || n === 'Object_4' || n === 'Object_5';
 
-            const isCollar = child.name === 'Object_6';
-
-            if ((isMainBody || isExtraPart) && !isCollar) {
+            if (isTarget) {
                 const geom = child.geometry.clone();
                 // Bake world transform into geometry
                 child.updateMatrixWorld();
@@ -210,7 +211,7 @@ function BaselineModel({
             }
         }
         prevLayerCount.current = layers.length;
-    }, [layers.length, camera, updateLayerTransform]);
+    }, [layers.length, layers, camera, updateLayerTransform]);
 
     // 5) Pointer move
     const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
@@ -221,40 +222,12 @@ function BaselineModel({
     };
 
     // 6) Drag başlangıcı (kilitli layer kontrol ekle)
-    const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    const handleLayerPointerDown = (e: ThreeEvent<PointerEvent>, layerId: string) => {
         if (e.button !== 0) return;
-        e.stopPropagation();
+        e.stopPropagation(); // ✅ CLICK CONFLICT FIX: Stop OrbitControls
 
-        const targetMesh = targetMeshRef.current;
-        if (!targetMesh || layers.length === 0) return;
-
-        // ✅ FIX: Use R3F normalized pointer
-        pointer.current.copy(e.pointer);
-
-        raycaster.current.setFromCamera(pointer.current, camera);
-        const hits = raycaster.current.intersectObject(targetMesh, true);
-        if (!hits.length) return;
-
-        const hitPointWorld = hits[0].point.clone();
-        const hitPointLocal = targetMesh.worldToLocal(hitPointWorld);
-
-        let nearest: Layer | null = null;
-        let minDist = Infinity;
-
-        // ✅ Sadece görünür ve kilitli olmayan layerları seç (Loop refactoring for TS inference)
-        for (const layer of layers) {
-            if (layer.visible === false || layer.locked) continue;
-
-            const d = new THREE.Vector3(...layer.position).distanceTo(hitPointLocal);
-            if (d < minDist) {
-                minDist = d;
-                nearest = layer;
-            }
-        }
-
-        if (nearest) {
-            startDraggingLayer(nearest.id);
-        }
+        // ✅ Sadece tıklanan layerı seç
+        startDraggingLayer(layerId);
     };
 
     // 7) Drag bitişi (Commit Changes)
@@ -364,7 +337,6 @@ function BaselineModel({
     return (
         <Center
             onPointerMove={handlePointerMove}
-            onPointerDown={handlePointerDown}
             onPointerUp={handlePointerUp}
         >
             <group ref={animationGroupRef}>
@@ -393,11 +365,15 @@ function BaselineModel({
                                         <DragProxy
                                             layer={layer}
                                             onRef={(mesh) => { layerRefs.current[layer.id] = mesh; }}
+                                            fabricTexture={fabricNormal} // ✅ Texture Integration
+                                            onPointerDown={(e) => handleLayerPointerDown(e, layer.id)} // ✅ Specific Handler
                                         />
                                     ) : (
                                         <LayerDecal
                                             layer={layer}
                                             onRef={(mesh) => { layerRefs.current[layer.id] = mesh; }}
+                                            fabricTexture={fabricNormal} // ✅ Texture Integration
+                                            onPointerDown={(e) => handleLayerPointerDown(e, layer.id)} // ✅ Specific Handler
                                         />
                                     ),
                                     targetMesh
@@ -423,26 +399,28 @@ export default function ProductSceneBaseline({
                 camera={{ fov: 35, position: [0, 1.3, 2.2] }}
                 gl={{
                     toneMapping: THREE.ACESFilmicToneMapping,
-                    antialias: true, // ✅ Keskin kenarlar için
+                    toneMappingExposure: 0.8, // ✅ Pozlamayı kıstık (Patlamayı önler)
+                    antialias: true,
                 }}
             >
-                {/* ✅ Işıklandırma iyileştirmesi */}
-                <ambientLight intensity={0.3} />
+                {/* ✅ Natural Soft Lighting (Dengeli) */}
+                <ambientLight intensity={0.8} /> {/* Gölgeleri yumuşat (0.6 -> 0.8) */}
                 <directionalLight
-                    intensity={0.6}
+                    intensity={0.2} // Parlamayı azalt (0.3 -> 0.2)
                     position={[2, 3, 2]}
                     castShadow
+                    shadow-bias={-0.0001} // Gölge hatalarını önle
                 />
-                <Environment preset="city" />
+                <Environment preset="city" blur={1} /> {/* Blur yansımaları yumuşatır */}
 
                 <BaselineModel modelPath={modelPath} scale={scale} position={position} />
 
                 <OrbitControls
                     makeDefault
-                    minDistance={1.2}
+                    minDistance={0.4} // ✅ Macro Zoom: Yüzeye çok yaklaşmaya izin ver
                     maxDistance={4}
                     enablePan={false}
-                    enabled={!draggingLayerId} // Drag varken kamera dönmesin
+                    enabled={!draggingLayerId}
                     dampingFactor={0.05} // ✅ Smooth rotation
                     enableDamping
                 />
