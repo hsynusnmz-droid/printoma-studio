@@ -69,7 +69,7 @@ export function LayerDecal({ layer, onRef }: LayerDecalProps) {
                 polygonOffsetFactor={-4} // ✅ FIX: Daha fazla öne çıkar (Outermost visibility)
                 depthTest={true}
                 depthWrite={false}
-                roughness={0.9} // Kumaş gerçekçiliği
+                roughness={1.0} // ✅ UPDATED: Tam Mat görünüm (PBR uyumu için)
                 metalness={0}
                 side={THREE.FrontSide} // Sadece dış yüz
             />

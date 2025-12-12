@@ -2,7 +2,7 @@
 
 import React, { useLayoutEffect, useMemo, useRef, useEffect } from 'react';
 import { Canvas, useThree, useFrame, ThreeEvent, createPortal } from '@react-three/fiber';
-import { useGLTF, Environment, OrbitControls, Center } from '@react-three/drei';
+import { useGLTF, Environment, OrbitControls, Center, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useStore, type Layer } from '@/store/useStore';
@@ -48,6 +48,16 @@ function BaselineModel({
     const animationSpeed = useStore((s) => s.animationSpeed);
 
     const gltf = useGLTF(modelPath);
+    // ✅ PBR Upgrade: Load Fabric Normal Map
+    const fabricNormal = useTexture('/textures/fabric_normal.jpg');
+
+    // Texture ayarlarını optimize et
+    useLayoutEffect(() => {
+        fabricNormal.wrapS = fabricNormal.wrapT = THREE.RepeatWrapping;
+        fabricNormal.repeat.set(4, 4); // Dokuyu sıklaştır
+        fabricNormal.colorSpace = THREE.NoColorSpace; // Normal map için gerekli
+    }, [fabricNormal]);
+
     const scene = useMemo(() => gltf.scene.clone(), [gltf.scene]);
 
     const baseMaterialsRef = useRef<THREE.MeshStandardMaterial[]>([]);
@@ -66,7 +76,15 @@ function BaselineModel({
     const raycaster = useRef(new THREE.Raycaster());
     const { camera } = useThree();
 
-    // 1) Materyalleri klonla ve whitelist'e al
+    // ✅ Raycaster Tuning: Hassasiyet ayarı
+    useLayoutEffect(() => {
+        // Varsayılan raycaster threshold değerini düşürerek daha hassas seçim sağlar
+        if (raycaster.current.params.Mesh) {
+            raycaster.current.params.Mesh.threshold = 0.01;
+        }
+    }, []);
+
+    // 1) Materyalleri klonla, PBR uygula ve whitelist'e al
     useLayoutEffect(() => {
         baseMaterialsRef.current = [];
 
@@ -82,9 +100,13 @@ function BaselineModel({
             materials.forEach((mat) => {
                 if (mat instanceof THREE.MeshStandardMaterial) {
                     const clone = mat.clone();
-                    // ✅ PBR iyileştirmesi
-                    clone.roughness = 0.85; // Kumaş dokusu
+                    // ✅ PBR iyileştirmesi: High-Fidelity Fabric
+                    clone.roughness = 0.85; // Kumaş matlığı
                     clone.metalness = 0.05;
+                    clone.normalMap = fabricNormal;
+                    clone.normalScale.set(0.5, 0.5); // Derinlik hissi
+                    clone.envMapIntensity = 1.2; // Işık etkileşimi
+
                     baseMaterialsRef.current.push(clone);
                     cloned.push(clone);
                 } else {
@@ -94,7 +116,7 @@ function BaselineModel({
 
             child.material = Array.isArray(child.material) ? cloned : cloned[0];
         });
-    }, [scene]);
+    }, [scene, fabricNormal]);
 
     // 2) Rengi uygula
     useLayoutEffect(() => {
@@ -190,7 +212,6 @@ function BaselineModel({
         prevLayerCount.current = layers.length;
     }, [layers.length, camera, updateLayerTransform]);
 
-    // 5) Pointer move
     // 5) Pointer move
     const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
         if (!draggingLayerId) return;
