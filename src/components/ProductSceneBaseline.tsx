@@ -1,19 +1,23 @@
 'use client';
 
+
 import React, { useLayoutEffect, useMemo, useRef, useEffect } from 'react';
 import { Canvas, useThree, useFrame, ThreeEvent, createPortal } from '@react-three/fiber';
 import { useGLTF, Environment, OrbitControls, Center, useTexture } from '@react-three/drei';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useStore, type Layer } from '@/store/useStore';
 import { LayerDecal } from '@/components/LayerDecal';
 import { DragProxy } from '@/components/DragProxy';
 import { calculateDecalRotation } from '@/utils/geometry';
+import { DEFAULT_PRODUCT } from '@/config/products'; // ✅ Config Pattern Integration
 
 interface ProductSceneBaselineProps {
     modelPath: string;
     scale?: number | [number, number, number];
     position?: [number, number, number];
+    orbitControlsRef?: React.MutableRefObject<OrbitControlsImpl | null>;
 }
 
 const applyTShirtColor = (
@@ -33,11 +37,44 @@ const applyTShirtColor = (
     });
 };
 
+// 📸 Screenshot Manager Component
+function ScreenshotManager() {
+    const { gl, scene, camera } = useThree();
+    const screenshotRequested = useStore((s) => s.screenshotRequested);
+    const setScreenshotRequested = useStore((s) => s.setScreenshotRequested);
+    const layers = useStore((s) => s.layers);
+
+    useFrame(() => {
+        if (screenshotRequested) {
+            // 1. Force Render
+            gl.render(scene, camera);
+
+            // 2. Take Screenshot
+            const dataUrl = gl.domElement.toDataURL('image/png', 1.0); // High Quality
+
+            // 3. Download
+            const link = document.createElement('a');
+            link.setAttribute('download', 'printoma-mockup.png');
+            link.setAttribute('href', dataUrl);
+            link.click();
+
+            // 4. Log Data (JSON Export)
+            console.log('📄 Print Data Export:', JSON.stringify(layers, null, 2));
+
+            // 5. Reset Flag
+            setScreenshotRequested(false);
+        }
+    });
+
+    return null;
+}
+
 // ✅ DIAGNOSTIC TOOL: Removed after successful diagnosis
 function BaselineModel({
     modelPath,
     scale = 1,
     position = [0, 0, 0],
+    orbitControlsRef,
 }: ProductSceneBaselineProps) {
     const tshirtColor = useStore((s) => s.tshirtColor);
     const layers = useStore((s) => s.layers);
@@ -47,6 +84,10 @@ function BaselineModel({
     const updateLayerTransform = useStore((s) => s.updateLayerTransform);
     const animationType = useStore((s) => s.animationType);
     const animationSpeed = useStore((s) => s.animationSpeed);
+
+    // 👻 Ghost Mode State
+    const pendingLayer = useStore((s) => s.pendingLayer);
+    const confirmPendingLayer = useStore((s) => s.confirmPendingLayer);
 
     const gltf = useGLTF(modelPath);
     // ✅ PBR Upgrade: Load Fabric Normal Map
@@ -73,6 +114,7 @@ function BaselineModel({
     const layerRefs = useRef<{ [id: string]: THREE.Mesh }>({});
     const dragCommitRef = useRef<{ id: string; position: [number, number, number]; normal?: [number, number, number] } | null>(null);
     const animationGroupRef = useRef<THREE.Group>(null);
+    const ghostMeshRef = useRef<THREE.Mesh>(null); // 👻 Ghost Ref
 
     const [isCameraInside, setIsCameraInside] = React.useState(false);
 
@@ -138,9 +180,9 @@ function BaselineModel({
             // Include: Object_8 (Body) AND Object_10 to Object_20 (Sleeves, etc.)
             // Exclude: Object_6 (Collar/Seams)
 
-            // ✅ FIX: New Model Filters (Object_2 - Object_5)
+            // ✅ FIX: New Model Filters (Config Driven)
             const n = child.name;
-            const isTarget = n === 'Object_2' || n === 'Object_3' || n === 'Object_4' || n === 'Object_5';
+            const isTarget = DEFAULT_PRODUCT.targetMeshes.includes(n);
 
             if (isTarget) {
                 const geom = child.geometry.clone();
@@ -221,10 +263,29 @@ function BaselineModel({
         pointer.current.copy(e.pointer);
     };
 
+    // 👻 Ghost Click Handler
+    const handleGhostClick = (e: ThreeEvent<PointerEvent>) => {
+        if (!pendingLayer || !targetMesh) return;
+        e.stopPropagation();
+
+        const hitPointLocal = targetMesh.worldToLocal(e.point.clone());
+        const normal = e.face?.normal.clone().transformDirection(targetMesh.matrixWorld);
+
+        confirmPendingLayer(
+            [hitPointLocal.x, hitPointLocal.y, hitPointLocal.z],
+            normal ? [normal.x, normal.y, normal.z] : undefined
+        );
+    };
+
     // 6) Drag başlangıcı (kilitli layer kontrol ekle)
     const handleLayerPointerDown = (e: ThreeEvent<PointerEvent>, layerId: string) => {
         if (e.button !== 0) return;
         e.stopPropagation(); // ✅ CLICK CONFLICT FIX: Stop OrbitControls
+
+        // 🛑 Imperative Freeze (Fixes Race Condition)
+        if (orbitControlsRef && orbitControlsRef.current) {
+            orbitControlsRef.current.enabled = false;
+        }
 
         // ✅ Sadece tıklanan layerı seç
         startDraggingLayer(layerId);
@@ -244,6 +305,11 @@ function BaselineModel({
         }
 
         stopDraggingLayer();
+
+        // 🟢 Imperative Unfreeze
+        if (orbitControlsRef && orbitControlsRef.current) {
+            orbitControlsRef.current.enabled = true;
+        }
     };
 
     // 8) ✅ PERFORMANS: useFrame optimizasyonu (Direct Mutation)
@@ -283,18 +349,38 @@ function BaselineModel({
             }
         }
 
-        // ✅ FIX: Sadece drag sırasında raycast yap
-        if (!draggingLayerId || !targetMesh) return;
+        // ✅ FIX: Sadece drag veya ghost sırasında raycast yap
+        if ((!draggingLayerId && !pendingLayer) || !targetMesh) return;
 
         raycaster.current.setFromCamera(pointer.current, camera);
         const hits = raycaster.current.intersectObject(targetMesh, true);
-        if (!hits.length) return;
+        if (!hits.length) {
+            // Ghost boşluğa düşerse gizle
+            if (pendingLayer && ghostMeshRef.current) {
+                ghostMeshRef.current.visible = false;
+            }
+            return;
+        }
 
         const hit = hits[0];
         const hitPointLocal = targetMesh.worldToLocal(hit.point.clone());
         const normal = hit.face?.normal.clone().transformDirection(targetMesh.matrixWorld);
 
+        // 👻 Ghost Update Logic
+        if (pendingLayer && ghostMeshRef.current) {
+            ghostMeshRef.current.visible = true;
+            ghostMeshRef.current.position.set(hitPointLocal.x, hitPointLocal.y, hitPointLocal.z);
+
+            if (normal) {
+                const n = new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
+                const { rotation } = calculateDecalRotation(n, 0);
+                ghostMeshRef.current.rotation.set(rotation[0], rotation[1], rotation[2]);
+            }
+            return; // Drag mantığına girmesin
+        }
+
         // --- DIRECT MUTATION START ---
+        if (!draggingLayerId) return; // ✅ Null Check
         const activeMesh = layerRefs.current[draggingLayerId];
 
         if (activeMesh) {
@@ -338,6 +424,7 @@ function BaselineModel({
         <Center
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
+            onPointerDown={pendingLayer ? handleGhostClick : undefined} // 👻 Capture click for placement
         >
             <group ref={animationGroupRef}>
                 <primitive object={scene} scale={scale} position={position} />
@@ -356,7 +443,7 @@ function BaselineModel({
                 !isCameraInside &&
                 layers
                     .filter(layer => layer.visible !== false) // ✅ Görünmez layerları render etme
-                    .map((layer: Layer) => {
+                    .map((layer: Layer, index) => {
                         const isDragging = draggingLayerId === layer.id;
                         return (
                             <React.Fragment key={layer.id}>
@@ -371,6 +458,7 @@ function BaselineModel({
                                     ) : (
                                         <LayerDecal
                                             layer={layer}
+                                            index={index} // ✅ Dynamic Indexing
                                             onRef={(mesh) => { layerRefs.current[layer.id] = mesh; }}
                                             fabricTexture={fabricNormal} // ✅ Texture Integration
                                             onPointerDown={(e) => handleLayerPointerDown(e, layer.id)} // ✅ Specific Handler
@@ -381,6 +469,29 @@ function BaselineModel({
                             </React.Fragment>
                         );
                     })}
+
+            {/* 👻 Ghost Decal Render */}
+            {pendingLayer && targetMesh && createPortal(
+                <LayerDecal
+                    layer={{
+                        id: 'ghost',
+                        type: pendingLayer.type,
+                        src: pendingLayer.src,
+                        position: [0, 0, 0], // Position managed by ref
+                        rotation: [0, 0, 0],
+                        scale: 0.2,
+                        visible: true,
+                        locked: false,
+                        flipX: false,
+                        flipY: false
+                    }}
+                    index={999}
+                    onRef={(mesh) => { ghostMeshRef.current = mesh; }}
+                    fabricTexture={fabricNormal}
+                // Tıklama olayını portal containerı üzerinden alıyoruz ama burada da olabilir
+                />,
+                targetMesh
+            )}
         </Center>
     );
 }
@@ -391,6 +502,20 @@ export default function ProductSceneBaseline({
     position = [0, 0, 0],
 }: ProductSceneBaselineProps) {
     const draggingLayerId = useStore((s) => s.draggingLayerId);
+    const stopDraggingLayer = useStore((s) => s.stopDraggingLayer);
+    const orbitControlsRef = useRef<OrbitControlsImpl>(null);
+
+    // ✅ GLOBAL SAFETY: Ensure state is reset even if pointer leaves the model
+    const handleGlobalPointerUp = (_e: React.PointerEvent) => {
+        // Note: This is an HTML/Canvas pointer event, not R3F ThreeEvent, but sufficient for safety
+        if (orbitControlsRef.current) {
+            orbitControlsRef.current.enabled = true;
+        }
+        // Force stop dragging if we are still thinking we are dragging
+        if (draggingLayerId) {
+            stopDraggingLayer();
+        }
+    };
 
     return (
         <div className="flex-1 min-w-0 h-full relative bg-gradient-to-br from-slate-50 to-slate-100">
@@ -401,6 +526,11 @@ export default function ProductSceneBaseline({
                     toneMapping: THREE.ACESFilmicToneMapping,
                     toneMappingExposure: 0.8, // ✅ Pozlamayı kıstık (Patlamayı önler)
                     antialias: true,
+                    preserveDrawingBuffer: true, // 📸 Vital for Screenshots
+                }}
+                onPointerUp={handleGlobalPointerUp}
+                onPointerMissed={() => {
+                    if (orbitControlsRef.current) orbitControlsRef.current.enabled = true;
                 }}
             >
                 {/* ✅ Natural Soft Lighting (Dengeli) */}
@@ -413,17 +543,25 @@ export default function ProductSceneBaseline({
                 />
                 <Environment preset="city" blur={1} /> {/* Blur yansımaları yumuşatır */}
 
-                <BaselineModel modelPath={modelPath} scale={scale} position={position} />
+                <BaselineModel
+                    modelPath={modelPath}
+                    scale={scale}
+                    position={position}
+                    orbitControlsRef={orbitControlsRef}
+                />
 
                 <OrbitControls
+                    ref={orbitControlsRef}
                     makeDefault
                     minDistance={0.4} // ✅ Macro Zoom: Yüzeye çok yaklaşmaya izin ver
                     maxDistance={4}
                     enablePan={false}
-                    enabled={!draggingLayerId}
+                    // enabled={!draggingLayerId} // ❌ REMOVED: Managed imperatively via ref
                     dampingFactor={0.05} // ✅ Smooth rotation
                     enableDamping
                 />
+
+                <ScreenshotManager />
             </Canvas>
         </div>
     );

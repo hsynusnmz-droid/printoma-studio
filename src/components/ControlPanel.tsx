@@ -18,6 +18,7 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
     const updateLayerTransform = useStore((s) => s.updateLayerTransform);
     const toggleLayerVisibility = useStore((s) => s.toggleLayerVisibility);
     const toggleLayerLock = useStore((s) => s.toggleLayerLock);
+    const setScreenshotRequested = useStore((s) => s.setScreenshotRequested);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -233,6 +234,7 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
             {/* Footer Actions */}
             <div className="p-4 border-t border-slate-100 bg-slate-50">
                 <button
+                    onClick={() => setScreenshotRequested(true)}
                     className="w-full py-3 bg-gradient-to-r from-slate-800 to-slate-900 text-white rounded-lg font-medium hover:from-slate-700 hover:to-slate-800 transition-all flex items-center justify-center shadow-lg hover:shadow-xl"
                     disabled={layers.length === 0}
                 >

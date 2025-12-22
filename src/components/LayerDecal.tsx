@@ -1,6 +1,7 @@
 'use client';
 import React from 'react';
 import { Decal, useTexture } from '@react-three/drei';
+import { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Layer } from '@/store/useStore';
 import { calculateDecalRotation } from '@/utils/geometry';
@@ -9,10 +10,11 @@ interface LayerDecalProps {
     layer: Layer;
     onRef?: (mesh: THREE.Mesh) => void;
     fabricTexture?: THREE.Texture;
-    onPointerDown?: (e: any) => void;
+    index: number;
+    onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
 }
 
-export function LayerDecal({ layer, onRef, fabricTexture, onPointerDown }: LayerDecalProps) {
+export function LayerDecal({ layer, index, onRef, fabricTexture, onPointerDown }: LayerDecalProps) {
     const baseTexture = useTexture(layer.src) as THREE.Texture;
 
     // Clone and configure texture in useMemo to avoid mutation side-effects on original texture
@@ -20,6 +22,7 @@ export function LayerDecal({ layer, onRef, fabricTexture, onPointerDown }: Layer
         const t = baseTexture.clone();
         t.colorSpace = THREE.SRGBColorSpace;
         t.flipY = false;
+        t.anisotropy = 16; // ✅ FIX: High quality at oblique angles
         t.needsUpdate = true;
         return t;
     }, [baseTexture]);
@@ -60,16 +63,22 @@ export function LayerDecal({ layer, onRef, fabricTexture, onPointerDown }: Layer
             scale={[
                 layer.scale * scaleX * (layer.flipX ? -1 : 1),
                 layer.scale * (layer.flipY ? -1 : 1),
-                layer.scale,
+                0.15, // ✅ FIX: Constant depth to prevent stretching on curves
             ]}
-            onPointerDown={onPointerDown} // ✅ Click handling injection
+            onPointerDown={(e) => {
+                e.stopPropagation(); // ✅ STRICT: Prevent bleed-through to T-shirt
+                onPointerDown?.(e);
+            }}
+            onPointerUp={(e) => {
+                e.stopPropagation();
+            }}
         >
             <meshStandardMaterial
                 ref={materialRef}
                 map={configuredTexture}
                 transparent
                 polygonOffset
-                polygonOffsetFactor={-4} // ✅ FIX: Daha fazla öne çıkar (Outermost visibility)
+                polygonOffsetFactor={-1 - index} // ✅ FIX: Dynamic Z-Priority (Newer on Top)
                 depthTest={true}
                 depthWrite={false}
                 roughness={1.0} // ✅ UPDATED: Tam Mat görünüm

@@ -17,7 +17,7 @@ interface StudioMainProps {
 }
 
 export default function StudioMain({ product }: StudioMainProps) {
-    const { addLayer } = useStore();
+    const { setPendingLayer } = useStore();
 
     const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -30,7 +30,7 @@ export default function StudioMain({ product }: StudioMainProps) {
         }
 
         const url = URL.createObjectURL(file);
-        addLayer({ src: url });
+        setPendingLayer({ src: url, type: 'image' });
 
         // ✅ FIX: URL cleanup (layer silindiğinde çağrılacak şekilde store'a eklenebilir)
         e.target.value = '';

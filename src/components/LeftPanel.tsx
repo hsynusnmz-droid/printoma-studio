@@ -128,7 +128,7 @@ export default function LeftPanel() {
                                 ].map((item) => (
                                     <button
                                         key={item.id}
-                                        onClick={() => setAnimType(item.id)}
+                                        onClick={() => setAnimType(item.id as 'static' | 'walk' | 'waves' | 'knit')}
                                         className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${animType === item.id
                                             ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm ring-1 ring-indigo-200'
                                             : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
