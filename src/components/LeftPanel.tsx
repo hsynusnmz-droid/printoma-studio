@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ChevronDown, PlaySquare, Upload, User, Footprints, Waves, Grid3x3 } from 'lucide-react';
+import { ChevronDown, Upload, User, Footprints, Waves, Grid3x3 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 
 const PRESET_COLORS = [
@@ -88,17 +88,20 @@ export default function LeftPanel() {
                     </button>
                     {openSections.background && (
                         <div className="p-3 border-t border-slate-100 flex flex-col items-center gap-2">
-                            <label className="w-full h-28 border-2 border-dashed border-slate-200 rounded-lg flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-indigo-500 hover:bg-slate-50 transition-all group">
-                                <div className="p-2 bg-white rounded-full border border-slate-100 shadow-sm group-hover:scale-110 transition-transform">
-                                    <Upload className="w-5 h-5 text-slate-400 group-hover:text-indigo-600" />
+                            <div className="w-full h-28 border-2 border-dashed border-slate-200 bg-slate-50 rounded-lg flex flex-col items-center justify-center gap-2 opacity-50 cursor-not-allowed relative">
+                                {/* Yakında Badge */}
+                                <div className="absolute top-2 right-2">
+                                    <span className="px-2 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded-full">
+                                        Yakında
+                                    </span>
                                 </div>
-                                <span className="text-xs font-medium text-slate-500 group-hover:text-indigo-600">Görsel Yükle</span>
-                                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                                    if (e.target.files?.[0]) alert("Arka plan değiştirme özelliği hazırlanıyor...");
-                                }} />
-                            </label>
+                                <div className="p-2 bg-white rounded-full border border-slate-100 shadow-sm">
+                                    <Upload className="w-5 h-5 text-slate-300" />
+                                </div>
+                                <span className="text-xs font-medium text-slate-400">Arka Plan Yükle</span>
+                            </div>
                             <p className="text-[10px] text-slate-400 text-center px-2 w-full">
-                                Modelin arkasına sabit görsel ekler
+                                Modelin arkasına sabit görsel ekleyebileceksiniz
                             </p>
                         </div>
                     )}
@@ -179,14 +182,6 @@ export default function LeftPanel() {
                     )}
                 </div>
 
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-slate-200 bg-white">
-                <button className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-200">
-                    <span>Export</span>
-                    <PlaySquare className="w-4 h-4" />
-                </button>
             </div>
         </div>
     );

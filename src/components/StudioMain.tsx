@@ -5,21 +5,17 @@ import ProductSceneBaseline from './ProductSceneBaseline';
 import ControlPanel from './ControlPanel';
 import LeftPanel from './LeftPanel';
 import { useStore } from '@/store/useStore';
-import { ProductConfig } from '@/types/supabase-custom';
+import { ProductConfig } from '@/config/products';
+import { resizeImage } from '@/utils/imageOptimizer';
 
 interface StudioMainProps {
-    product: {
-        id: string;
-        name: string;
-        model_url: string;
-        config: ProductConfig;
-    } | null;
+    product: ProductConfig;
 }
 
 export default function StudioMain({ product }: StudioMainProps) {
     const { setPendingLayer } = useStore();
 
-    const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
@@ -29,27 +25,20 @@ export default function StudioMain({ product }: StudioMainProps) {
             return;
         }
 
-        const url = URL.createObjectURL(file);
-        setPendingLayer({ src: url, type: 'image' });
+        // ✅ PERFORMANCE: Resize large images before upload
+        try {
+            console.log('🔄 Görsel optimize ediliyor...');
+            const optimizedUrl = await resizeImage(file, 2048, 2048, 0.9);
+            setPendingLayer({ src: optimizedUrl, type: 'image' });
+        } catch (error) {
+            console.error('Görsel optimizasyonu başarısız:', error);
+            // Fallback: Use original if optimization fails
+            const url = URL.createObjectURL(file);
+            setPendingLayer({ src: url, type: 'image' });
+        }
 
-        // ✅ FIX: URL cleanup (layer silindiğinde çağrılacak şekilde store'a eklenebilir)
         e.target.value = '';
     };
-
-    if (!product) {
-        return (
-            <div className="flex items-center justify-center h-screen bg-slate-50 text-slate-500">
-                <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
-                    <span className="text-lg font-medium">Ürün yükleniyor...</span>
-                </div>
-            </div>
-        );
-    }
-
-    // ✅ FIX: Local development fallback (Supabase URL bazen CORS/Network hatası veriyor)
-    const isDev = process.env.NODE_ENV === 'development';
-    const modelPath = isDev ? '/t-shirt.glb' : (product.model_url || '/t-shirt.glb');
 
     return (
         <div className="flex items-stretch h-screen w-full bg-slate-50 overflow-hidden">
@@ -58,13 +47,13 @@ export default function StudioMain({ product }: StudioMainProps) {
 
             {/* Main Canvas Area */}
             <ProductSceneBaseline
-                modelPath={modelPath}
-                scale={product.config.scale}
-                position={product.config.position}
+                modelPath={product.modelPath}
+                scale={1}
+                position={[0, 0, 0]}
             />
 
             {/* Right Control Panel */}
             <ControlPanel onUpload={handleUpload} />
         </div>
     );
-}   
+}

@@ -1,15 +1,22 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
-import { Upload, Layers, Type, Download, Eye, EyeOff, Lock, Unlock, ArrowLeftRight, ArrowUpDown, RotateCcw, Sparkles, Wand2 } from 'lucide-react';
+import { Upload, Layers, Download, Eye, EyeOff, Lock, Unlock, ArrowLeftRight, ArrowUpDown, RotateCcw, Sparkles, Wand2, LogIn, LogOut, Save, FolderOpen } from 'lucide-react';
 import { useStore } from '@/store/useStore';
+import { downloadPrintFile } from '@/utils/exportUtils';
+import { createClient } from '@/lib/supabase/client';
+import AuthModal from './AuthModal';
+import { saveDesign } from '@/lib/designService';
+import DesignGalleryModal from './DesignGalleryModal';
 
 interface ControlPanelProps {
     onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 export default function ControlPanel({ onUpload }: ControlPanelProps) {
+    const user = useStore((s) => s.user);
+    const setUser = useStore((s) => s.setUser);
     const layers = useStore((s) => s.layers);
     const activeLayerId = useStore((s) => s.activeLayerId);
     const setActiveLayer = useStore((s) => s.setActiveLayer);
@@ -21,21 +28,95 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
     const setScreenshotRequested = useStore((s) => s.setScreenshotRequested);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+    const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+
+    const handleLogout = async () => {
+        const supabase = createClient();
+        await supabase.auth.signOut();
+        setUser(null);
+    };
 
     const handleUploadClick = () => {
         fileInputRef.current?.click();
+    };
+
+    const handleSaveDesign = async () => {
+        // Check if user is logged in
+        if (!user) {
+            setIsAuthModalOpen(true);
+            return;
+        }
+
+        // Prompt for design name
+        const designName = window.prompt('💾 Tasarımınız için bir isim girin:', 'Benim Tasarımım');
+
+        if (!designName || designName.trim() === '') {
+            return; // User cancelled
+        }
+
+        // Get current state
+        const { layers, tshirtColor } = useStore.getState();
+
+        // Save to database
+        const result = await saveDesign(designName, layers, tshirtColor);
+
+        // Show result
+        alert(result.message);
+    };
+
+    const handleOpenGallery = () => {
+        // Check if user is logged in
+        if (!user) {
+            setIsAuthModalOpen(true);
+            return;
+        }
+
+        setIsGalleryOpen(true);
     };
 
     const activeLayer = layers.find((l) => l.id === activeLayerId);
 
     return (
         <div className="flex flex-col h-full bg-white border-r border-slate-200 shadow-sm animate-in slide-in-from-left duration-500 rounded-2xl overflow-hidden mx-4 my-4 max-h-[calc(100vh-2rem)] w-96 shrink-0">
+            {/* Header with Auth */}
             <div className="p-5 border-b border-slate-100 bg-slate-50">
-                <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-blue-600" />
-                    Katmanlar
-                </h2>
-                <p className="text-xs text-slate-400 mt-1">Sürükle bırak ile tasarla</p>
+                <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-blue-600" />
+                        <h2 className="text-sm font-bold text-slate-800">Katmanlar</h2>
+                    </div>
+
+                    {/* Auth UI */}
+                    {user ? (
+                        <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-slate-200">
+                                <div className="w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                    {user.email?.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="text-xs text-slate-600 max-w-[80px] truncate">
+                                    {user.email}
+                                </span>
+                            </div>
+                            <button
+                                onClick={handleLogout}
+                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                title="Çıkış Yap"
+                            >
+                                <LogOut className="w-4 h-4 text-slate-600" />
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => setIsAuthModalOpen(true)}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-xs font-medium"
+                        >
+                            <LogIn className="w-3.5 h-3.5" />
+                            Giriş
+                        </button>
+                    )}
+                </div>
+                <p className="text-xs text-slate-400">Sürükle bırak ile tasarla</p>
             </div>
 
             {/* Main Content Area - Scrollable */}
@@ -232,14 +313,48 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
             )}
 
             {/* Footer Actions */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50">
+            <div className="p-4 border-t border-slate-100 bg-slate-50 space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                    {/* Save Design */}
+                    <button
+                        onClick={handleSaveDesign}
+                        className="py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-medium hover:from-indigo-700 hover:to-purple-700 transition-all flex items-center justify-center shadow-lg hover:shadow-xl"
+                        disabled={layers.length === 0}
+                        title="Tasarımı Kaydet"
+                    >
+                        <Save className="w-4 h-4" />
+                    </button>
+
+                    {/* Load Designs */}
+                    <button
+                        onClick={handleOpenGallery}
+                        className="py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-pink-700 transition-all flex items-center justify-center shadow-lg hover:shadow-xl"
+                        title="Tasarımlarım"
+                    >
+                        <FolderOpen className="w-4 h-4" />
+                    </button>
+                </div>
+
+                {/* Save Mockup Screenshot */}
                 <button
                     onClick={() => setScreenshotRequested(true)}
                     className="w-full py-3 bg-gradient-to-r from-slate-800 to-slate-900 text-white rounded-lg font-medium hover:from-slate-700 hover:to-slate-800 transition-all flex items-center justify-center shadow-lg hover:shadow-xl"
                     disabled={layers.length === 0}
                 >
                     <Download className="w-4 h-4 mr-2" />
-                    Tasarımı Kaydet
+                    Mockup İndir
+                </button>
+
+                <button
+                    onClick={async () => {
+                        const layers = useStore.getState().layers;
+                        await downloadPrintFile(layers);
+                    }}
+                    className="w-full py-3 mt-2 bg-white border-2 border-slate-800 text-slate-800 rounded-lg font-medium hover:bg-slate-50 transition-all flex items-center justify-center shadow-sm"
+                    disabled={layers.length === 0}
+                >
+                    <Download className="w-4 h-4 mr-2" />
+                    Baskı Dosyası (Şeffaf PNG)
                 </button>
                 {layers.length === 0 && (
                     <p className="text-xs text-slate-400 text-center mt-2">
@@ -247,6 +362,10 @@ export default function ControlPanel({ onUpload }: ControlPanelProps) {
                     </p>
                 )}
             </div>
+
+            {/* Modals */}
+            <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+            <DesignGalleryModal isOpen={isGalleryOpen} onClose={() => setIsGalleryOpen(false)} />
         </div>
     );
 }

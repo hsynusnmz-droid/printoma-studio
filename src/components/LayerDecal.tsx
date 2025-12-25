@@ -23,6 +23,10 @@ export function LayerDecal({ layer, index, onRef, fabricTexture, onPointerDown }
         t.colorSpace = THREE.SRGBColorSpace;
         t.flipY = false;
         t.anisotropy = 16; // ✅ FIX: High quality at oblique angles
+        // ✅ PERFORMANCE: Enable mipmaps for efficient GPU texture filtering
+        t.minFilter = THREE.LinearMipmapLinearFilter;
+        t.magFilter = THREE.LinearFilter;
+        t.generateMipmaps = true;
         t.needsUpdate = true;
         return t;
     }, [baseTexture]);

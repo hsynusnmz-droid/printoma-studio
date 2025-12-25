@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { User } from '@supabase/supabase-js';
 
 export type LayerType = 'image' | 'text';
 
@@ -18,6 +19,10 @@ export interface Layer {
 }
 
 interface AppState {
+    // Auth State
+    user: User | null;
+
+    // Design State
     tshirtColor: string;
     layers: Layer[];
     activeLayerId: string | null;
@@ -25,8 +30,12 @@ interface AppState {
     pendingLayer: { src: string; type: LayerType } | null;
     screenshotRequested: boolean; // 🆕 Export State
 
-    // Actions
+    // Auth Actions
+    setUser: (user: User | null) => void;
+
+    // Design Actions
     setTshirtColor: (color: string) => void;
+    setLayers: (layers: Layer[]) => void;  // For loading saved designs
     addLayer: (payload: { src: string; type?: LayerType }) => void;
     removeLayer: (id: string) => void;
     setActiveLayer: (id: string | null) => void;
@@ -42,6 +51,8 @@ interface AppState {
     toggleLayerVisibility: (id: string) => void; // 🆕
     toggleLayerLock: (id: string) => void; // 🆕
 
+    // Print Export State (Removed - handled via exportUtils)
+
     // Animation State
     animationType: 'static' | 'walk' | 'waves' | 'knit';
     animationSpeed: number;
@@ -50,6 +61,11 @@ interface AppState {
 }
 
 export const useStore = create<AppState>((set) => ({
+    // Auth State
+    user: null,
+    setUser: (user) => set({ user }),
+
+    // Design State
     tshirtColor: '#ef4444',
     layers: [],
     activeLayerId: null,
@@ -64,6 +80,7 @@ export const useStore = create<AppState>((set) => ({
     setAnimationSpeed: (speed) => set({ animationSpeed: speed }),
 
     setTshirtColor: (color) => set({ tshirtColor: color }),
+    setLayers: (layers) => set({ layers, activeLayerId: layers[0]?.id || null }),
 
     addLayer: (payload) =>
         set((state) => {
@@ -85,6 +102,12 @@ export const useStore = create<AppState>((set) => ({
 
     removeLayer: (id) =>
         set((state) => {
+            // ✅ Memory Leak Fix: Revoke blob URLs
+            const layerToRemove = state.layers.find((l) => l.id === id);
+            if (layerToRemove?.src.startsWith('blob:')) {
+                URL.revokeObjectURL(layerToRemove.src);
+            }
+
             const filtered = state.layers.filter((l) => l.id !== id);
             const wasActive = state.activeLayerId === id;
             return {
@@ -108,6 +131,9 @@ export const useStore = create<AppState>((set) => ({
     setPendingLayer: (layer) => set({ pendingLayer: layer }),
 
     setScreenshotRequested: (requested) => set({ screenshotRequested: requested }),
+
+
+
 
     confirmPendingLayer: (position, normal) =>
         set((state) => {
