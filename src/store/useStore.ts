@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type { User } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
+import type { Product } from '@/types';
 
 export type LayerType = 'image' | 'text';
 
@@ -22,6 +24,12 @@ interface AppState {
     // Auth State
     user: User | null;
 
+    // Product State
+    products: Product[];
+    currentProduct: Product | null;
+    isLoadingProducts: boolean;
+    productError: string | null;
+
     // Design State
     tshirtColor: string;
     layers: Layer[];
@@ -32,6 +40,10 @@ interface AppState {
 
     // Auth Actions
     setUser: (user: User | null) => void;
+
+    // Product Actions
+    loadProducts: () => Promise<void>;
+    setCurrentProduct: (productId: string) => void;
 
     // Design Actions
     setTshirtColor: (color: string) => void;
@@ -60,10 +72,53 @@ interface AppState {
     setAnimationSpeed: (speed: number) => void;
 }
 
-export const useStore = create<AppState>((set) => ({
+export const useStore = create<AppState>((set, get) => ({
     // Auth State
     user: null,
     setUser: (user) => set({ user }),
+
+    // Product State
+    products: [],
+    currentProduct: null,
+    isLoadingProducts: false,
+    productError: null,
+
+    // Product Actions
+    loadProducts: async () => {
+        set({ isLoadingProducts: true, productError: null });
+        try {
+            const supabase = createClient();
+            const { data, error } = await supabase
+                .from('products')
+                .select('*')
+                .eq('active', true)
+                .order('created_at', { ascending: true });
+
+            if (error) throw error;
+
+            if (data && data.length > 0) {
+                set({
+                    products: data as Product[],
+                    currentProduct: get().currentProduct || (data[0] as Product),
+                });
+            } else {
+                set({ productError: 'No active products found' });
+            }
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Failed to load products';
+            console.error('Supabase Product Fetch Error:', err);
+            set({ productError: errorMessage });
+        } finally {
+            set({ isLoadingProducts: false });
+        }
+    },
+
+    setCurrentProduct: (productId) => {
+        const product = get().products.find((p) => p.id === productId);
+        if (product) {
+            set({ currentProduct: product });
+        }
+    },
 
     // Design State
     tshirtColor: '#ef4444',
