@@ -91,22 +91,28 @@ export const useStore = create<AppState>((set, get) => ({
             const { data, error } = await supabase
                 .from('products')
                 .select('*')
-                .eq('active', true)
+                .eq('is_active', true) // ✅ FIX: Use correct column name
                 .order('created_at', { ascending: true });
 
-            if (error) throw error;
+            if (error) {
+                console.error('Supabase Query Error:', error);
+                throw error;
+            }
 
             if (data && data.length > 0) {
+                console.log('✅ Products loaded:', data.length, 'products');
                 set({
                     products: data as Product[],
+                    // Set first product if none selected
                     currentProduct: get().currentProduct || (data[0] as Product),
                 });
             } else {
+                console.warn('⚠️ No active products found in database');
                 set({ productError: 'No active products found' });
             }
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Failed to load products';
-            console.error('Supabase Product Fetch Error:', err);
+            console.error('❌ Product Load Error:', errorMessage);
             set({ productError: errorMessage });
         } finally {
             set({ isLoadingProducts: false });

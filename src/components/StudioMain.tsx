@@ -47,7 +47,6 @@ export default function StudioMain({ product }: StudioMainProps) {
 
             {/* Main Canvas Area */}
             <ProductSceneBaseline
-                modelPath={product.modelPath}
                 scale={1}
                 position={[0, 0, 0]}
             />

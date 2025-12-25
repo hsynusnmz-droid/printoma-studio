@@ -37,11 +37,12 @@ const applyTShirtColor = (
 };
 
 export default function BaselineModel({
-    modelPath,
     scale = 1,
     position = [0, 0, 0],
     orbitControlsRef,
-}: BaselineModelProps) {
+}: Omit<BaselineModelProps, 'modelPath'>) {
+    // Get current product from store
+    const currentProduct = useStore((s) => s.currentProduct);
     const tshirtColor = useStore((s) => s.tshirtColor);
     const layers = useStore((s) => s.layers);
     const draggingLayerId = useStore((s) => s.draggingLayerId);
@@ -55,7 +56,11 @@ export default function BaselineModel({
     const pendingLayer = useStore((s) => s.pendingLayer);
     const confirmPendingLayer = useStore((s) => s.confirmPendingLayer);
 
-    const gltf = useGLTF(modelPath);
+    // ✅ Get model URL from product
+    const modelUrl = currentProduct?.model_url || '';
+    console.log('🔄 Loading Model URL:', modelUrl, 'Product ID:', currentProduct?.id);
+
+    const gltf = useGLTF(modelUrl);
     // ✅ PBR Upgrade: Load Fabric Normal Map
     const rawFabricNormal = useTexture('/textures/fabric_normal.jpg');
 
