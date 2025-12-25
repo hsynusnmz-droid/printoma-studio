@@ -44,14 +44,14 @@ export async function middleware(request: NextRequest) {
 export const config = {
     matcher: [
         /*
-         * Match all request paths except for the ones starting with:
+         * Match all request paths except for:
          * - _next/static (static files)
          * - _next/image (image optimization files)
          * - favicon.ico (favicon file)
-         * - Static assets: svg, png, jpg, jpeg, gif, webp
-         * - 3D models: glb, gltf
-         * - Public folder assets
+         * - t-shirt.glb (Explicitly allow the 3D model)
+         * - textures/ (Texture folder)
+         * - images with common extensions
          */
-        '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|glb|gltf)$).*)',
+        '/((?!_next/static|_next/image|favicon.ico|t-shirt\\.glb|textures/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|glb|gltf)$).*)',
     ],
 }
